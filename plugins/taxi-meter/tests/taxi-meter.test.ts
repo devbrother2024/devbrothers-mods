@@ -52,6 +52,8 @@ const ride = async ($: Engine, on: On, { cost = 0, limits = [] as Limit[], ledge
   on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
   on('session.start', () => ({ cwd: '/work' }))
   on('session.measure', ($, e) => ({ changed: e.changed }))
+  on('classic.SessionStart', () => ({}))
+  on('classic.PostModelSwitch', () => ({}))
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
   on('turn.step', async function* ($, e) {
     return {
@@ -292,7 +294,8 @@ test('/receipt는 영수증 창을 열고 승차 정보와 요청별 요금을 �
   const pane = await $.ui.mount(receiptPane)
   expect(await pane.find({ type: 'Text', text: '영  수  증' })).toBeDefined()
   expect(await pane.find({ type: 'Text', text: '14:00 → 14:25 (25분)' })).toBeDefined()
-  expect(await pane.find({ type: 'Text', text: '1,500 토큰 · 일반 100%' })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: '처리 1,500 토큰(캐시 읽기 포함) · 일반 100%' })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: '요금은 제목 생성·프롬프트 추천 같은 보이지 않는 호출까지 포함해요' })).toBeDefined()
   expect(await pane.find({ type: 'Text', text: '₩2,100' })).toBeDefined()
   expect(await pane.find({ type: 'Text', text: '2건 · ₩700 · ₩1,400' })).toBeDefined()
   expect(await pane.find({ type: 'Text', text: 'API 정가 $1.50 · 환율 1,400원' })).toBeDefined()
@@ -334,4 +337,51 @@ test('/meter demo는 데모 주행으로 한도 소진까지 보여주고 다시
   expect(await ui.find({ type: 'Text', text: '₩0' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '한도는 첫 응답 뒤에 표시돼요' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '데모 주행' })).toBeUndefined()
+})
+
+test('프롬프트를 보내지 않아도 시작 모델과 /model 전환이 차종 표시등과 할증 키에 바로 반영된다', LED, async ($, on) => {
+  await ride($, on)
+  await $.classic.SessionStart({ source: 'startup', model: 'claude-sonnet-5-5' })
+  let ui = await $.ui.mount(band('terminal'))
+  expect((await ui.find({ type: 'Text', text: '  할증  ' }))?.props.bold).toBe(false)
+  await ui.unmount()
+
+  await $.classic.PostModelSwitch({
+    from_model: 'claude-sonnet-5-5',
+    to_model: 'claude-opus-5-5',
+    requested_model: 'opus',
+    source: 'command',
+    context_tokens: 0,
+    prompt_cache_warm: false,
+    cache_ttl: '5m',
+    estimated_cache_write_usd: 0,
+    estimate_basis: 'catalog',
+  })
+  ui = await $.ui.mount(band('terminal'))
+  expect((await ui.find({ type: 'Text', text: '  할증  ' }))?.props.bold).toBe(true)
+  await ui.unmount()
+
+  await $.classic.PostModelSwitch({
+    from_model: 'claude-opus-5-5',
+    to_model: 'claude-sonnet-5-5',
+    requested_model: 'sonnet',
+    source: 'picker',
+    context_tokens: 0,
+    prompt_cache_warm: false,
+    cache_ttl: '5m',
+    estimated_cache_write_usd: 0,
+    estimate_basis: 'catalog',
+  })
+  ui = await $.ui.mount(band('terminal'))
+  expect((await ui.find({ type: 'Text', text: '  할증  ' }))?.props.bold).toBe(false)
+})
+
+test('classic.SessionStart의 source가 clear이면 새 승차로 0원부터 센다', COMPACT, async ($, on) => {
+  const { measure, prompt } = await ride($, on)
+  await prompt('요청')
+  await measure(2)
+  await $.classic.SessionStart({ source: 'clear', model: 'claude-opus-5-5' })
+  const ui = await $.ui.mount(band())
+  expect(await ui.find({ type: 'Text', text: '₩0' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '[모범]' })).toBeDefined()
 })

@@ -1,6 +1,6 @@
 {
   "name": "taxi-meter",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "프롬프트 위 택시 미터기 패널: 프롬프트별 승차 요금(API 정가 환산), 5시간·주간 한도와 리셋 시각, 차종·할증·복합 키, /meter·/receipt",
   "author": { "name": "개발동생 (devbrothers)" },
   "homepage": "https://github.com/devbrother2024/devbrothers-mods",

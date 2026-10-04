@@ -380,6 +380,23 @@ export const register: Register = (on, options) => {
     return result
   })
 
+  on('classic.SessionStart', async ($, e, next) => {
+    if (e.model) model = e.model
+    if (e.source === 'clear') {
+      sessionUsd = 0
+      requests = []
+      ticks = 0
+    }
+    $.ui.invalidate('ui.render')
+    return next(e)
+  })
+
+  on('classic.PostModelSwitch', async ($, e, next) => {
+    model = e.to_model
+    $.ui.invalidate('ui.render')
+    return next(e)
+  })
+
   on('session.end', async ($, e, next) => {
     timer?.cancel()
     endDemo()
@@ -704,13 +721,14 @@ export const register: Register = (on, options) => {
         }),
         rule,
         row('승하차', plain(`${clockOfMs(startedAt)} → ${clockOfMs(now)} (${duration(now - startedAt)})`)),
-        row('주행', plain(`${comma(tokens)} 토큰 · ${shares()}`)),
+        row('주행', plain(`처리 ${comma(tokens)} 토큰(캐시 읽기 포함) · ${shares()}`)),
         row(
           '요금',
           Text({ bold: true, color: RED, children: [won(sessionUsd)] }),
           Text({ dimColor: true, children: [`API 정가 $${sessionUsd.toFixed(2)} · 환율 ${comma(rate)}원`] }),
         ),
         row('요청', plain(requestsLine())),
+        Text({ dimColor: true, children: ['요금은 제목 생성·프롬프트 추천 같은 보이지 않는 호출까지 포함해요'] }),
         row('표시등', plain(`장거리 ${longHaulCount}회 · 5시간 최고 ${peakFiveHour}%`)),
         row('누적', plain(`오늘 ${won(recentUsd(now, 1))} · ${monthDay(ledger.since)}부터 ${won(ledger.totalUsd)}`)),
         rule,
