@@ -38,6 +38,19 @@ claude plugin install taxi-navi@devbrothers-mods
 
 필요한 것만 골라 설치해도 돼요. 열려 있는 세션에서는 `/reload-plugins`를 치거나 Claude Code를 다시 시작하면 바로 보입니다. `/plugin`에서 `4 mods active · taxi-blackbox, …`가 보이면 성공이에요.
 
+<details>
+<summary>업데이트·삭제</summary>
+
+```bash
+claude plugin marketplace update devbrothers-mods   # 새 버전 목록 받기
+claude plugin update taxi-meter@devbrothers-mods    # mod별로 업데이트
+claude plugin uninstall taxi-meter@devbrothers-mods # 삭제
+```
+
+업데이트한 뒤에는 세션을 다시 열어야 새 버전이 적용돼요.
+
+</details>
+
 > [!TIP]
 > **넷 다 쓴다면 블랙박스를 먼저 설치하세요.** mod는 설치한 순서대로 실행돼요. 블랙박스가 단속 카메라보다 앞에 있어야 카메라가 세운 명령까지 사고로 기록됩니다.
 
@@ -62,13 +75,14 @@ claude --plugin-dir plugins/taxi-blackbox --plugin-dir plugins/taxi-speedcam \
 
 ## 🧾 taxi-meter: 요금 미터기
 
-<img src="docs/images/meter.webp" alt="택시 미터기 패널. 요금 ₩200, 컨텍스트 5%, 5시간 한도 3%" width="560">
+<img src="docs/images/meter.webp" alt="택시 미터기 패널. 일반 Sonnet 5.5, 방금 요청 +₩30, 요금 ₩270, 컨텍스트 4%, 5시간 한도 13%" width="560">
 
 세션 하나가 승차 한 번이에요. Claude가 일하는 동안 말이 달리고 요금이 딸깍딸깍 올라가요.
 
 - **요금**은 쓴 토큰을 API 정가로 환산한 원화예요. 구독(Pro·Max) 요금제에서 실제로 청구되는 돈은 아니고, "내 구독이 API로 치면 얼마어치 일하나"를 보여줘요.
-- **위쪽**에는 차종(일반·모범·블랙)과 실제 모델 이름(예: Opus 5.5), 출력 속도(tok/s), **오른쪽**에는 컨텍스트 사용률, **아래 줄**에는 5시간 한도와 리셋 시각, 주간 한도가 나와요.
-- 미터기는 세션 동안 계속 올라가기만 해요. 새 프롬프트를 보내도 ₩0으로 돌아가지 않고, 헤더에 `방금 요청 +₩___`로 그 요청의 요금이 따로 보여요. `/clear`하면 새 승차로 0원부터 다시 세고, 세션을 이어 열어도(`--continue`) 다시 연 시점부터 새 승차예요. 요청별 요금은 `/receipt`에 남아요. 차종 표시등과 `할증` 키는 `/model`로 모델을 바꾸는 즉시 바뀌어요(프롬프트를 보낼 필요 없어요). 모델을 바꾸면 이전 캐시를 못 써서 다음 요청에 대화 전체를 다시 캐시에 쓰는 요금이 붙는데, 그 예상 금액을 알림으로 먼저 알려 드려요.
+- **큰 숫자는 세션 동안 올라가기만 해요.** 새 프롬프트를 보내도 ₩0으로 돌아가지 않고, 그 요청의 요금은 위쪽 `방금 요청 +₩___`로 따로 보여요. `/clear`하면 새 승차로 0원부터 다시 세고, `--continue`로 이어 열면 다시 연 시점부터 새 승차예요.
+- **위쪽**에는 차종(일반·모범·블랙), 실제 모델 이름(예: `Sonnet 5.5`), 출력 속도(tok/s)가, **오른쪽**에는 컨텍스트 사용률이, **아래 줄**에는 5시간 한도와 리셋 시각, 주간 한도가 나와요.
+- `/model`로 모델을 바꾸면 프롬프트를 보내기 전에 차종과 `할증` 키가 바로 바뀌어요. 이때 이전 캐시를 못 써서 다음 요청에 대화 전체를 다시 캐시에 쓰는 요금이 붙는데, 그 예상 금액을 알림으로 먼저 알려 드려요(긴 대화에서 Opus로 바꾸면 수천 원이 나오기도 해요).
 
 | 키 | 켜지는 때 |
 | --- | --- |
@@ -80,9 +94,20 @@ claude --plugin-dir plugins/taxi-blackbox --plugin-dir plugins/taxi-speedcam \
 
 <img src="docs/images/meter-demo.webp" alt="데모 주행 끝 화면. 5시간 한도를 다 써서 빨간 숫자와 하차 안내" width="560">
 
-5시간 한도가 90%를 넘으면 "곧 목적지입니다", 100%면 "하차하셔야 합니다 · 리셋 시각 재승차"가 뜨고 숫자가 빨간색이 돼요. 위 화면은 `/meter demo` 데모 주행이에요(연출 숫자라서 미터기에 "데모 주행"이 찍혀요).
+5시간이나 주간 한도가 90%를 넘으면 "곧 목적지입니다", 100%면 "하차하셔야 합니다 · 재승차 시각"이 뜨고 숫자가 빨간색이 돼요. 위 화면은 `/meter demo` 데모 주행이에요(연출 숫자라서 미터기에 "데모 주행"이 찍혀요).
 
-<img src="docs/images/receipt.webp" alt="/receipt 영수증 창. 승하차 시각, 주행 토큰, 요금, 누적" width="900">
+<img src="docs/images/receipt.webp" alt="/receipt 영수증 창. 승하차 시각, 새로 처리·캐시 재사용 토큰, 차종, 요금, 요청별 요금, 누적" width="900">
+
+<details>
+<summary>요금은 얼마나 정확한가요</summary>
+
+미터기는 토큰을 직접 세지 않고 Claude Code가 계산한 세션 비용(`/cost`와 같은 값)을 따라가요. 실제 세션으로 맞춰 보니 대화 기록에 남은 응답들을 정가로 계산한 값에, 기록에 안 남는 호출(세션 제목 생성, 프롬프트 추천 등)을 더하면 소수 일곱째 자리까지 같았어요.
+
+- 기록에 안 남는 호출 비용도 요금에 들어가요. 턴이 끝난 뒤 생기는 호출은 다음 요청의 `방금 요청`에 섞여 보일 수 있어요(세션 합계는 맞아요).
+- 영수증의 토큰은 **새로 처리**와 **캐시 재사용**으로 나눠 보여요. 요청할 때마다 대화 전체를 캐시에서 다시 읽어서, 긴 세션에서는 캐시 재사용이 대부분이에요. 캐시 읽기는 입력 단가의 10분의 1이라 요금 비중은 작아요.
+- 프롬프트 추천 문구가 필요 없다면 `settings.json`에 `"promptSuggestionEnabled": false`를 넣어 그 호출을 끌 수 있어요.
+
+</details>
 
 <details>
 <summary>명령과 설정</summary>
@@ -90,7 +115,7 @@ claude --plugin-dir plugins/taxi-blackbox --plugin-dir plugins/taxi-speedcam \
 | 명령 | 하는 일 |
 | --- | --- |
 | `/meter` | 이번 승차(세션)·방금 요청·오늘·최근 7일·누적 요금 |
-| `/receipt` | 영수증 창(승하차 시각, 새로 처리한 토큰과 캐시 재사용 토큰, 차종 비중, 요금, 요청별 요금, 누적) |
+| `/receipt` | 영수증 창(승하차 시각, 새로 처리·캐시 재사용 토큰, 차종 비중, 요금, 요청별 요금, 누적) |
 | `/meter reset` | 화면 요금과 누적 장부를 모두 0원으로 (데모 중이면 데모도 끝내요) |
 | `/meter demo` | 약 10초짜리 데모 주행. 다시 입력하거나 다음 프롬프트를 보내면 실제 미터기로 돌아와요 |
 
@@ -205,6 +230,7 @@ Desktop 앱 Code 탭의 로컬 세션은 터미널과 같은 `~/.claude` 설정�
 > mod는 샌드박스 없이 내 권한으로 Claude Code 안에서 실행돼요. 어떤 mod든 설치 전에 코드를 읽어보세요. 이 팩은 `$.fs`, `$.process`, `$.http`를 쓰지 않아요. `claude plugin validate plugins/<이름>`의 `calls:` 줄로 직접 확인할 수 있어요.
 
 - 설정은 `/config`에서 바꿔요.
+- `/receipt`·`/blackbox` 창은 전체화면 모드(`settings.json`의 `"tui": "fullscreen"`)에서 터미널 폭이 110칸 이상이면 오른쪽에 붙고, 그 밖에는 프롬프트 위에 열려요. 위치는 Claude Code가 정해요.
 - 넷을 다 켜면 프롬프트 위에 최대 18줄 정도가 필요해요. 전체화면 모드에서는 이 영역이 터미널 높이의 절반까지라, 창이 낮으면 아래쪽이 `n more`로 접히고 스크롤돼요. 창을 50줄 이상으로 키우면 다 보여요.
 - Claude Code 2.1.289에서 만들고 테스트했어요. mods API는 릴리스 사이에 바뀔 수 있어요.
 
