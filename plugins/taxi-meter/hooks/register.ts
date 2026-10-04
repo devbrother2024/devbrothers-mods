@@ -5,7 +5,7 @@ type Limit = { kind: string; percentUsed: number; resetsAt?: string }
 type Ledger = { since: string; totalUsd: number; days: Record<string, number> }
 type Line = { text: string; color?: string; bold?: boolean; dim?: boolean }
 type State = '빈차' | '주행' | '대기' | '하차'
-type View = { usd: number; limits: Limit[]; model?: string; longHaul: boolean; isWorking: boolean; isDemo: boolean; speed: number; context?: number }
+type View = { usd: number; prompt: number; limits: Limit[]; model?: string; longHaul: boolean; isWorking: boolean; isDemo: boolean; speed: number; context?: number }
 type Demo = { elapsed: number; resetsAt: string; ticks: number; warned: number }
 
 const RECEIPT = 'taxi-receipt'
@@ -15,6 +15,8 @@ const LEDGER = 'ledger'
 const TRACK = 10
 const LONG_HAUL_PERCENT = 50
 const LEDGER_DAYS = 90
+const MAX_REQUESTS = 50
+const RECEIPT_REQUESTS = 5
 const DAY_MS = 86_400_000
 
 const RED = '#ff3b30'
@@ -211,8 +213,8 @@ export const register: Register = (on, options) => {
 
   let startedAt = 0
   let lastCostUsd = 0
-  let rideUsd = 0
   let sessionUsd = 0
+  let requests: number[] = []
   let limits: Limit[] = []
   let contextPercent: number | undefined
   let model: string | undefined
@@ -240,8 +242,11 @@ export const register: Register = (on, options) => {
     return sum
   }
 
+  const promptUsd = () => requests[requests.length - 1] ?? 0
+
   const realView = (isWorking: boolean): View => ({
-    usd: rideUsd,
+    usd: sessionUsd,
+    prompt: promptUsd(),
     limits,
     model,
     longHaul,
@@ -264,6 +269,7 @@ export const register: Register = (on, options) => {
     const context = DEMO_CONTEXT_FROM + (DEMO_CONTEXT_TO - DEMO_CONTEXT_FROM) * progress
     return {
       usd: DEMO_USD * progress,
+      prompt: 0,
       limits: [
         { kind: 'five_hour', percentUsed: Math.floor(fiveHour), resetsAt: ride.resetsAt },
         { kind: 'seven_day', percentUsed: Math.floor(DEMO_WEEK_FROM + (DEMO_WEEK_TO - DEMO_WEEK_FROM) * progress) },
@@ -332,12 +338,18 @@ export const register: Register = (on, options) => {
     const week = limitOf('seven_day')
     return [
       '🚕 클로드 택시 미터기',
-      `이번 승차 ${won(rideUsd)} (API 정가 환산 $${rideUsd.toFixed(2)} · 환율 ${comma(rate)}원)`,
-      `이번 세션 ${won(sessionUsd)} (API 정가 환산 $${sessionUsd.toFixed(2)})`,
+      `이번 승차 ${won(sessionUsd)} (API 정가 환산 $${sessionUsd.toFixed(2)} · 환율 ${comma(rate)}원)`,
+      `방금 요청 ${requests.length > 0 ? `+${won(promptUsd())}` : '-'} · 요청 ${requests.length}건`,
       `오늘 ${won(recentUsd(now, 1))} · 최근 7일 ${won(recentUsd(now, 7))} · ${monthDay(ledger.since)}부터 ${won(ledger.totalUsd)}`,
       five || week ? limitLine(realView(false)).text : '한도: 아직 응답이 없어요',
       `차종 ${tierOf(model) ?? '-'}${model ? ` (${model})` : ''} · 컨텍스트 ${contextPercent === undefined ? '-' : `${contextPercent}%`}`,
     ].join('\n')
+  }
+
+  const requestsLine = () => {
+    if (requests.length === 0) return '-'
+    const recent = requests.slice(-RECEIPT_REQUESTS).map((usd) => won(usd)).join(' · ')
+    return requests.length > RECEIPT_REQUESTS ? `${requests.length}건 · 최근 ${recent}` : `${requests.length}건 · ${recent}`
   }
 
   const shares = () => {
@@ -352,7 +364,7 @@ export const register: Register = (on, options) => {
     const result = await next(e)
     await $.command.register({
       name: 'meter',
-      description: '택시 미터기: 이번 승차·세션·오늘·누적 요금과 한도 (reset은 미터기와 누적 초기화, demo는 촬영용 데모 주행)',
+      description: '택시 미터기: 이번 승차(세션)·방금 요청·오늘·누적 요금과 한도 (reset은 미터기와 누적 초기화, demo는 촬영용 데모 주행)',
       argumentHint: '[reset|demo]',
       immediate: true,
     })
@@ -361,7 +373,7 @@ export const register: Register = (on, options) => {
     const saved = await $.store.get(LEDGER)
     ledger = isLedger(saved) ? saved : { since: new Date(now).toISOString(), totalUsd: 0, days: {} }
     const usage = await $.session.usage()
-    startedAt = usage.startedAt || now
+    startedAt = now
     lastCostUsd = usage.cost?.usd ?? 0
     limits = [...usage.rateLimits]
     contextPercent = usage.context.percent
@@ -376,10 +388,7 @@ export const register: Register = (on, options) => {
 
   on('turn.start', async ($, e, next) => {
     endDemo()
-    if (e.text) {
-      rideUsd = 0
-      ticks = 0
-    }
+    if (e.text) requests = [...requests, 0].slice(-MAX_REQUESTS)
     timer?.cancel()
     timer = $.clock.every(250, () => {
       frame += 1
@@ -416,7 +425,7 @@ export const register: Register = (on, options) => {
       tokensByTier[tierOf(usage.model ?? e.model) ?? '일반'] += used
     }
     if (!e.agentId) {
-      const { delta, isTick, isChime } = absorb(await $.session.usage())
+      const { delta, isTick, isChime } = absorb(await $.session.usage(), await $.clock.now())
       if (delta > 0) {
         const saved = await $.store.get(LEDGER)
         ledger = credit(isLedger(saved) ? saved : ledger, await $.clock.now(), delta)
@@ -429,7 +438,7 @@ export const register: Register = (on, options) => {
     return result
   })
 
-  const absorb = (m: Pick<SessionMeasureInput, 'context' | 'rateLimits' | 'cost'>) => {
+  const absorb = (m: Pick<SessionMeasureInput, 'context' | 'rateLimits' | 'cost'>, now: number) => {
     limits = [...m.rateLimits]
     contextPercent = m.context.percent ?? contextPercent
     const isLong = (contextPercent ?? 0) >= LONG_HAUL_PERCENT
@@ -440,11 +449,22 @@ export const register: Register = (on, options) => {
     if (five) peakFiveHour = Math.max(peakFiveHour, five.percentUsed)
 
     const costUsd = m.cost?.usd
-    const delta = costUsd === undefined ? 0 : costUsd >= lastCostUsd ? costUsd - lastCostUsd : costUsd
+    const isNewRide = costUsd !== undefined && costUsd < lastCostUsd
+    const delta = costUsd === undefined ? 0 : isNewRide ? costUsd : costUsd - lastCostUsd
     if (costUsd !== undefined) lastCostUsd = costUsd
-    rideUsd += delta
+    if (isNewRide) {
+      sessionUsd = 0
+      requests = []
+      ticks = 0
+      startedAt = now
+      tokens = 0
+      tokensByTier.일반 = tokensByTier.모범 = tokensByTier.블랙 = 0
+      longHaulCount = 0
+      peakFiveHour = 0
+    }
     sessionUsd += delta
-    const step = Math.floor(fare(rideUsd) / tickWon)
+    if (delta > 0 && requests.length > 0) requests = [...requests.slice(0, -1), promptUsd() + delta]
+    const step = Math.floor(fare(sessionUsd) / tickWon)
     const isTick = step > ticks
     if (isTick) ticks = step
 
@@ -456,7 +476,7 @@ export const register: Register = (on, options) => {
 
   on('session.measure', async ($, e, next) => {
     const result = await next(e)
-    const { delta, isTick, isChime } = absorb(e)
+    const { delta, isTick, isChime } = absorb(e, await $.clock.now())
     if (delta > 0) {
       const saved = await $.store.get(LEDGER)
       ledger = credit(isLedger(saved) ? saved : ledger, await $.clock.now(), delta)
@@ -474,8 +494,8 @@ export const register: Register = (on, options) => {
     if (arg === 'reset') {
       ledger = { since: new Date(now).toISOString(), totalUsd: 0, days: {} }
       await $.store.set(LEDGER, ledger)
-      rideUsd = 0
       sessionUsd = 0
+      requests = []
       ticks = 0
       endDemo()
       $.ui.invalidate('ui.render')
@@ -578,7 +598,9 @@ export const register: Register = (on, options) => {
                   Text({ color: LCD_GREEN, bold: true, children: [`${view.speed.toFixed(1)} tok/s`] }),
                 ],
               }),
-              Text({ color: LEGEND, children: ['ELECTRONIC TAXIMETER'] }),
+              view.prompt > 0
+                ? Text({ color: LCD_GREEN, bold: true, children: [`방금 요청 +${won(view.prompt)}`] })
+                : Text({ color: LEGEND, children: ['ELECTRONIC TAXIMETER'] }),
             ],
           }),
           Box({
@@ -651,6 +673,7 @@ export const register: Register = (on, options) => {
         columnGap: 1,
         children: [
           Text({ color: RED, bold: true, children: [won(view.usd)] }),
+          ...(view.prompt > 0 ? [Text({ dimColor: true, children: [`방금 +${won(view.prompt)}`] })] : []),
           ...lampRow,
           horse,
           limit,
@@ -687,6 +710,7 @@ export const register: Register = (on, options) => {
           Text({ bold: true, color: RED, children: [won(sessionUsd)] }),
           Text({ dimColor: true, children: [`API 정가 $${sessionUsd.toFixed(2)} · 환율 ${comma(rate)}원`] }),
         ),
+        row('요청', plain(requestsLine())),
         row('표시등', plain(`장거리 ${longHaulCount}회 · 5시간 최고 ${peakFiveHour}%`)),
         row('누적', plain(`오늘 ${won(recentUsd(now, 1))} · ${monthDay(ledger.since)}부터 ${won(ledger.totalUsd)}`)),
         rule,
