@@ -68,11 +68,20 @@ test('할 일을 만드는 동안은 조용히 경로만 그리고, 첫 작업�
   await update('1', 'in_progress')
   expect(spoken).toEqual([{ text: '경로 안내를 시작합니다. 경유지 3곳입니다.', voice: 'Yuna' }])
 
-  const ui = await $.ui.mount(band)
+  let ui = await $.ui.mount(band)
+  expect(await ui.find({ type: 'Raster', key: 'sign' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '다음 안내' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '테스트 작성' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '경유지 0/3' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '🚕' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '지금 로그인 API 중' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'drawn by Claude Code' })).toBeDefined()
+  await ui.unmount()
+
+  ui = await $.ui.mount({ ...band, props: { ...band.props, bodyColumns: 60 } })
   expect(await ui.find({ type: 'Text', text: '◉' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '  0/3' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '지금 로그인 API 중 · 다음 안내 테스트 작성' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'drawn by Claude Code' })).toBeDefined()
 })
 
 test('주행 중 할 일이 늘면 경로를 재탐색하고, 하나 끝낼 때마다 딩 소리를 낸다', VOICE, async ($, on) => {
@@ -85,6 +94,9 @@ test('주행 중 할 일이 늘면 경로를 재탐색하고, 하나 끝낼 때�
 
   await create('C')
   expect(spoken.at(-1)?.text).toBe('경로를 재탐색합니다. 경유지 3곳입니다.')
+  const ui = await $.ui.mount(band)
+  expect(await ui.find({ type: 'Text', text: '경로 재탐색' })).toBeDefined()
+  await ui.unmount()
 
   await create('D')
   expect(spoken.filter((s) => s.text.startsWith('경로를 재탐색')).length).toBe(1)
@@ -102,7 +114,9 @@ test('모두 끝나면 딩 다음에 도착 안내를 하고, 다음 프롬프�
   expect(spoken.at(-1)?.text).toBe('목적지에 도착했습니다. 안내를 종료합니다.')
 
   let ui = await $.ui.mount(band)
-  expect(await ui.find({ type: 'Text', text: '🏁 목적지에 도착했습니다 · 경유지 1곳 · 소요 3분' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '목적지에 도착했습니다' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '경유지 1곳 · 소요 3분' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '🏁' })).toBeDefined()
   await ui.unmount()
 
   await $.turn.start({ text: '다음 작업', turnId: 't2' })

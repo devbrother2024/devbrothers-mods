@@ -7,6 +7,30 @@ const PANE = 'taxi-blackbox'
 const CAPACITY = 500
 const RED = '#ff3b30'
 const YELLOW = '#ffcc00'
+const GREEN = '#34c759'
+const OSD = '#1c1c1e'
+const OSD_TEXT = '#e5e5e5'
+const INK = '#111111'
+
+const TRACK_RGB = 0x111111
+const RAIL_RGB = 0x3a3a3c
+const OK_RGB = 0x8e8e93
+const WINDOW_RGB = 0xf2f2f7
+const INCIDENT_RGB = 0xff3b30
+const PICK_RGB = 0xffcc00
+
+const TOOL_COLOR: Record<string, string> = {
+  Bash: '#ff9f0a',
+  Edit: '#0a84ff',
+  Write: '#0a84ff',
+  NotebookEdit: '#0a84ff',
+  Read: '#8e8e93',
+  Grep: '#8e8e93',
+  Glob: '#8e8e93',
+  WebFetch: '#30b0c7',
+  WebSearch: '#30b0c7',
+}
+const OTHER_TOOL = '#bf5af2'
 
 const SECRETS: readonly [RegExp, string][] = [
   [/\b((?:api[_-]?key|access[_-]?token|token|secret|password|passwd|pwd)\s*[=:]\s*)("[^"]*"|'[^']*'|[^\s"']+)/gi, '$1•••'],
@@ -29,6 +53,10 @@ const clockOf = (ms: number) => {
   const d = new Date(ms)
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
+const stampOf = (ms: number) => {
+  const d = new Date(ms)
+  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${clockOf(ms)}`
+}
 const elapsed = (ms: number) => {
   const total = Math.max(0, Math.floor(ms / 1000))
   const h = Math.floor(total / 3600)
@@ -43,6 +71,35 @@ const describe = (e: Record<string, unknown>) => {
   }
   const question = Array.isArray(e.questions) ? (e.questions[0] as { question?: unknown } | undefined)?.question : undefined
   return typeof question === 'string' ? question.split('\n')[0] : ''
+}
+
+const base64 = (bytes: Uint8Array) => {
+  const native = bytes as Uint8Array & { toBase64?: () => string }
+  if (native.toBase64) return native.toBase64()
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary)
+}
+
+const columnOf = (index: number, count: number, width: number) =>
+  count <= width ? index : Math.floor((index * width) / count)
+
+const timeline = (frames: Frame[], width: number, window: [number, number] | undefined, pick: number | undefined) => {
+  const cells = Array.from({ length: width }, () => ({ glyph: '▁', rgb: RAIL_RGB, rank: 0 }))
+  frames.forEach((frame, i) => {
+    const column = columnOf(i, frames.length, width)
+    const [glyph, rgb, rank] =
+      i === pick
+        ? ['█', PICK_RGB, 4]
+        : frame.outcome !== 'ok'
+          ? ['█', INCIDENT_RGB, 3]
+          : window && i >= window[0] && i < window[1]
+            ? ['▆', WINDOW_RGB, 2]
+            : ['▄', OK_RGB, 1]
+    if (rank > cells[column].rank) cells[column] = { glyph, rgb, rank }
+  })
+  const numbers = cells.flatMap((cell) => [cell.glyph.codePointAt(0) ?? 32, cell.rgb, TRACK_RGB])
+  return { columns: width, rows: 1, cells: base64(new Uint8Array(Uint32Array.from(numbers).buffer)) }
 }
 
 const reasonOf = (out: { deny?: string; isError?: boolean; result?: unknown }) => {
@@ -143,10 +200,11 @@ export const register: Register = (on, options) => {
       flexDirection: 'row',
       columnGap: 1,
       children: [
-        Text({ bold: true, ...(blink ? { color: RED } : { dimColor: true }), children: ['● REC'] }),
+        Text({ bold: true, color: blink ? '#ffffff' : RED, backgroundColor: blink ? RED : OSD, children: [' ● REC '] }),
+        Text({ color: OSD_TEXT, backgroundColor: OSD, children: [` ${stampOf(now)} `] }),
         Text({ dimColor: true, children: [`${elapsed(now - startedAt)} · 기록 ${frames.length + dropped}`] }),
-        ...(count > 0 ? [Text({ bold: true, color: YELLOW, children: [`사고 ${count}`] })] : []),
-        Text({ dimColor: true, children: ['· /blackbox'] }),
+        ...(count > 0 ? [Text({ bold: true, color: INK, backgroundColor: YELLOW, children: [` 사고 ${count} `] })] : []),
+        Text({ dimColor: true, children: ['/blackbox'] }),
       ],
     })
     const above = await next(e)
@@ -155,22 +213,57 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'Pane' }, async ($, e, next) => {
     if (e.requestId !== PANE) return next(e)
-    const { Box, Text, Button } = $.ui.resolve(e)
+    const elements = $.ui.resolve(e)
+    const { Box, Text, Button } = elements
     const redraw = () => $.ui.invalidate('ui.render')
     const list = incidents()
     const pick = list.length === 0 ? undefined : Math.min(selected ?? list.length - 1, list.length - 1)
+    const width = Math.max(20, e.props.bodyColumns - 4)
+
+    const fixed = (child: ReturnType<typeof Text>) => Box({ flexShrink: 0, children: [child] })
+    const fill = (child: ReturnType<typeof Text>) => Box({ flexGrow: 1, flexShrink: 1, minWidth: 0, children: [child] })
+    const isWide = e.props.bodyColumns >= 60
+
+    const badge = (frame: Frame, isIncident: boolean) =>
+      Text({
+        bold: true,
+        color: INK,
+        backgroundColor: isIncident ? RED : (TOOL_COLOR[frame.tool] ?? OTHER_TOOL),
+        children: [` ${frame.agentId ? '↳ ' : ''}${frame.tool} `],
+      })
 
     const line = (frame: Frame, isIncident: boolean) =>
       Box({
         flexDirection: 'row',
         columnGap: 1,
         children: [
-          Text({ dimColor: true, children: [clockOf(frame.at)] }),
-          Text({
-            ...(isIncident ? { bold: true, color: RED } : {}),
-            children: [`${frame.agentId ? '↳ ' : ''}${frame.tool}`],
-          }),
-          Text({ wrap: 'truncate-end', ...(isIncident ? {} : { dimColor: true }), children: [frame.what || '-'] }),
+          fixed(Text({ dimColor: true, children: [clockOf(frame.at)] })),
+          fixed(badge(frame, isIncident)),
+          fill(Text({ wrap: 'truncate-end', ...(isIncident ? { bold: true } : { dimColor: true }), children: [frame.what || '-'] })),
+        ],
+      })
+
+    const scrubber = (window: [number, number] | undefined, at: number | undefined) => {
+      if (!('Raster' in elements) || frames.length === 0) return []
+      const caret = at === undefined ? [] : [Text({ color: YELLOW, bold: true, children: [`${' '.repeat(columnOf(at, frames.length, width))}▲`] })]
+      return [elements.Raster({ key: 'timeline', ...timeline(frames, width, window, at) }), ...caret]
+    }
+
+    const header = (mode: 'REC' | 'PLAY', title: string, stamp: number) =>
+      Box({
+        flexDirection: 'row',
+        columnGap: 1,
+        children: [
+          fixed(
+            Text({
+              bold: true,
+              color: mode === 'REC' ? '#ffffff' : INK,
+              backgroundColor: mode === 'REC' ? RED : GREEN,
+              children: [mode === 'REC' ? ' ● REC ' : ' ▶ PLAY '],
+            }),
+          ),
+          fill(Text({ bold: true, wrap: 'truncate-end', children: [title] })),
+          fixed(Text({ color: OSD_TEXT, backgroundColor: OSD, children: [` ${isWide ? stampOf(stamp) : clockOf(stamp)} `] })),
         ],
       })
 
@@ -179,8 +272,9 @@ export const register: Register = (on, options) => {
         flexDirection: 'column',
         paddingX: 1,
         children: [
-          Text({ bold: true, children: [`블랙박스 · 기록 ${frames.length + dropped} · 사고 없음`] }),
+          header('REC', `블랙박스 · 기록 ${frames.length + dropped} · 사고 없음`, await $.clock.now()),
           Text({ dimColor: true, children: ['오류나 거부가 생기면 그 직전 동작을 여기서 돌려볼 수 있어요. 최근 동작:'] }),
+          ...scrubber([Math.max(0, frames.length - before), frames.length], undefined),
           ...frames.slice(-before).map((frame) => line(frame, false)),
         ],
       })
@@ -193,11 +287,25 @@ export const register: Register = (on, options) => {
       flexDirection: 'column',
       paddingX: 1,
       children: [
+        header('PLAY', `사고 ${pick + 1}/${list.length} · ${incident.tool} ${label}`, incident.at),
+        ...scrubber([Math.max(0, at - before), at], at),
+        Text({ dimColor: true, children: [`직전 ${before}개 동작`] }),
+        ...frames.slice(Math.max(0, at - before), at).map((frame) => line(frame, false)),
+        Box({
+          flexDirection: 'column',
+          borderStyle: 'round',
+          borderColor: RED,
+          paddingX: 1,
+          children: [
+            fixed(Text({ bold: true, color: '#ffffff', backgroundColor: RED, children: [' 사고 장면 '] })),
+            line(incident, true),
+            Text({ color: RED, wrap: 'wrap', children: [`└ ${incident.reason ?? label}`] }),
+          ],
+        }),
         Box({
           flexDirection: 'row',
           columnGap: 2,
           children: [
-            Text({ bold: true, children: [`사고 ${pick + 1}/${list.length} · ${incident.tool} ${label}`] }),
             Button({
               key: 'prev',
               label: '◀ 이전 사고',
@@ -220,10 +328,6 @@ export const register: Register = (on, options) => {
             }),
           ],
         }),
-        Text({ dimColor: true, children: [`직전 ${before}개 동작`] }),
-        ...frames.slice(Math.max(0, at - before), at).map((frame) => line(frame, false)),
-        line(incident, true),
-        Text({ color: RED, wrap: 'wrap', children: [`└ ${incident.reason ?? label}`] }),
       ],
     })
   })

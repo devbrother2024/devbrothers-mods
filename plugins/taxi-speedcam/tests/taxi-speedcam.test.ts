@@ -108,13 +108,21 @@ test('가주세요를 고르면 찰칵 소리와 음성 뒤에 명령을 보내�
   expect(spoken).toEqual(['역주행 차량이 감지되었습니다.'])
 
   let ui = await $.ui.mount(band)
+  expect(await ui.find({ type: 'Text', text: ' 📸 역주행 감지 ' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: ' 통과했어요 ' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '원격 브랜치 히스토리를 덮어씁니다' })).toBeDefined()
+  expect(await ui.find({ type: 'Raster', key: 'camera' })).toBeDefined()
+  expect(await ui.find({ type: 'Raster', key: 'stripe-top' })).toBeDefined()
+  await ui.unmount()
+
+  ui = await $.ui.mount({ ...band, props: { ...band.props, bodyColumns: 60 } })
   expect(await ui.find({ type: 'Text', text: '📸 [역주행 감지]' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '통과했어요' })).toBeDefined()
   await ui.unmount()
 
   await clock.advance(5_000)
   ui = await $.ui.mount(band)
-  expect(await ui.find({ type: 'Text', text: '📸 [역주행 감지]' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: ' 📸 역주행 감지 ' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: 'drawn by Claude Code' })).toBeDefined()
 })
 

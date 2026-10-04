@@ -68,9 +68,12 @@ claude --plugin-dir plugins/taxi-blackbox --plugin-dir plugins/taxi-speedcam --p
 ### taxi-navi
 
 ```
-🧭 ●━━●━━◉──○──○  2/5
-지금 테스트 작성 중 · 다음 안내 문서 정리
+ ▲    다음 안내 문서 정리                              경유지 2/5
+ ██   ●━━━━━━━●━━━━━━━🚕───────○───────○───────◎
+      지금 테스트 작성 중                                  경과 3분
 ```
+
+- 터미널에서 창이 75칸 이상이면 내비 화면(방향 화살표, 경로, 경과 시간)으로, 좁거나 Desktop이면 한 줄로 나옵니다. 경로를 재탐색하면 화살표가 5초 동안 유턴으로 바뀌고, 도착하면 체크 깃발이 뜹니다.
 
 - Claude Code v2.1.233부터 Opus 4.8·Sonnet 5·Fable 5 이후 모델은 할 일 도구가 기본으로 꺼져 있습니다. 이 모델들에서는 Claude가 할 일 목록을 만들지 않아서 내비에 그릴 경로가 없어요. `CLAUDE_CODE_ENABLE_TODO_TOOLS=1 claude`로 시작하세요. 켜져 있는지는 `/navi`가 알려줍니다.
 - `TaskCreate`·`TaskUpdate`·`TaskList`와 `TodoWrite`를 읽기만 합니다. 할 일 내용은 바꾸지 않아요.
@@ -93,6 +96,7 @@ claude --plugin-dir plugins/taxi-blackbox --plugin-dir plugins/taxi-speedcam --p
 | 후진 주의 | `git reset --hard`, `git clean -f`, `git checkout -- .`, `git stash drop` |
 | 고속도로 진입 | `--prod`, `wrangler deploy`, `terraform apply`, `npm publish` |
 
+- 잡으면 노란 경고 줄무늬 사이에 단속 카메라 표지판이 뜨고, 찰칵 순간 화면이 하얗게 번쩍입니다. 결과(통과했어요·정차했어요)가 5초 동안 남아요. 창이 75칸보다 좁으면 한 줄로 나옵니다.
 - [가주세요]를 고르면 평소처럼 권한 확인을 거쳐 실행되고, [세워주세요]를 고르면 실행하지 않고 Claude에게 이유를 알려줍니다.
 - 질문을 닫거나 `claude -p`처럼 물어볼 사람이 없으면 세웁니다.
 - 패턴으로 잡는 안전벨트입니다. 보안 경계가 아니니 권한 설정(deny 규칙)을 대신하지 않아요.
@@ -107,8 +111,11 @@ claude --plugin-dir plugins/taxi-blackbox --plugin-dir plugins/taxi-speedcam --p
 ### taxi-blackbox
 
 ```
-● REC 12:34 · 기록 128 사고 2 · /blackbox
+ ● REC   2026.10.04 15:00:02   12:34 · 기록 128  사고 2  /blackbox
 ```
+
+- 주행 중에는 `● REC`이 깜빡이고 실제 블랙박스처럼 날짜·시각이 찍힙니다.
+- `/blackbox` 창은 타임라인(사고는 빨강, 고른 사고는 노랑 ▲), 직전 동작 목록, 빨간 테두리의 사고 장면 카드로 구성돼요. 도구마다 색 배지가 붙습니다(Bash 주황, Edit·Write 파랑, Read·검색 회색, 웹 청록).
 
 - 모든 도구 호출의 시각, 도구, 대상(명령·파일·URL)과 결과(정상·오류·거부)를 이번 세션 동안 최대 500개 기억합니다.
 - `/blackbox`는 사고 직전 동작을 보여주는 창을 엽니다. `p`·`n`으로 이전·다음 사고를 넘겨보세요.
@@ -123,6 +130,7 @@ claude --plugin-dir plugins/taxi-blackbox --plugin-dir plugins/taxi-speedcam --p
 - mods는 샌드박스 없이 Claude Code 안에서 실행됩니다. 어떤 mod든 설치 전에 코드를 읽어보세요. 이 팩은 `$.fs`, `$.process`, `$.http`를 쓰지 않습니다. `claude plugin validate plugins/<이름>`의 `calls:` 줄로 직접 확인할 수 있어요.
 - 소리와 음성은 macOS에서만 납니다. Linux와 Windows에서는 화면 표시만 동작해요.
 - 설정은 `/config`에서 바꿀 수 있습니다.
+- 네 개를 모두 켜면 프롬프트 위 영역에 최대 18줄 정도가 필요해요. 전체화면 모드에서는 이 영역이 터미널 높이의 절반까지라, 창이 낮으면 아래쪽이 `n more`로 접히고 스크롤됩니다. 촬영할 때는 창을 50줄 이상으로 키우세요.
 
 ## 개발
 

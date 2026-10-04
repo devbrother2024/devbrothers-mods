@@ -7,10 +7,58 @@ const SHUTTER = 'sounds/shutter.wav'
 const GO = '가주세요'
 const STOP = '세워주세요'
 const FLASH_MS = 5_000
+const STROBE_MS = 300
 const SPEAK_AFTER_SHUTTER_MS = 300
 const HISTORY = 20
 const RED = '#ff3b30'
 const GREEN = '#34c759'
+const YELLOW = '#ffcc00'
+const INK = '#111111'
+const WHITE = '#ffffff'
+const DIM = '#8e8e93'
+
+const PANEL_WIDTH = 70
+const PANEL_ROWS = 5
+const SCREEN = '#121212'
+const STROBE = '#f5f5f7'
+const SIGN = '#d70015'
+const SIGN_RGB = 0xd70015
+const STRIPE_RGB = 0xffcc00
+const STRIPE_GAP_RGB = 0x111111
+
+const CAMERA_ICON = [
+  '....####........',
+  '.##############.',
+  '.##...####...##.',
+  '.##..##..##..##.',
+  '.##...####...##.',
+  '.##############.',
+]
+
+const QUADRANT = [' ', '▘', '▝', '▀', '▖', '▌', '▞', '▛', '▗', '▚', '▐', '▜', '▄', '▙', '▟', '█']
+
+const base64 = (bytes: Uint8Array) => {
+  const native = bytes as Uint8Array & { toBase64?: () => string }
+  if (native.toBase64) return native.toBase64()
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary)
+}
+
+const quadrants = (lit: (x: number, y: number) => boolean, columns: number, rows: number, on: number, off: number) => {
+  const numbers: number[] = []
+  for (let y = 0; y < rows * 2; y += 2) {
+    for (let x = 0; x < columns * 2; x += 2) {
+      const mask = (lit(x, y) ? 1 : 0) | (lit(x + 1, y) ? 2 : 0) | (lit(x, y + 1) ? 4 : 0) | (lit(x + 1, y + 1) ? 8 : 0)
+      numbers.push(QUADRANT[mask].codePointAt(0) ?? 32, on, off)
+    }
+  }
+  return { columns, rows, cells: base64(new Uint8Array(Uint32Array.from(numbers).buffer)) }
+}
+
+const icon = quadrants((x, y) => CAMERA_ICON[y]?.[x] === '#', 8, 3, 0xffffff, SIGN_RGB)
+const stripe = (columns: number) =>
+  quadrants((x, y) => Math.floor((x + y) / 4) % 2 === 0, columns, 1, STRIPE_RGB, STRIPE_GAP_RGB)
 
 const segments = (command: string) => command.split(/&&|\|\||[;|\n]/).map((part) => part.trim().split(/\s+/))
 
@@ -96,6 +144,7 @@ export const register: Register = (on, options) => {
     flashTimer?.cancel()
     flash = record
     $.ui.invalidate('ui.render')
+    $.clock.after(STROBE_MS, () => $.ui.invalidate('ui.render'))
 
     if (sound) $.audio.play({ asset: SHUTTER }).catch(() => {})
     if (voice) {
@@ -137,19 +186,76 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey || !flash) return next(e)
-    const { Box, Text } = $.ui.resolve(e)
-    const status = flash.decision
-      ? Text({ bold: true, color: flash.decision === '통과' ? GREEN : RED, children: [flash.decision === '통과' ? '통과했어요' : '정차했어요'] })
-      : Text({ bold: true, color: RED, children: ['단속 중'] })
-    const camera = Box({
-      flexDirection: 'row',
-      columnGap: 1,
-      children: [
-        Text({ bold: true, color: RED, children: [`📸 [${flash.label}]`] }),
-        status,
-        Text({ dimColor: true, wrap: 'truncate-end', children: [short(flash.command)] }),
-      ],
-    })
+    const elements = $.ui.resolve(e)
+    const { Box, Text } = elements
+    const record = flash
+    const sign = CAMERAS.find((candidate) => candidate.label === record.label)
+    const isStrobe = (await $.clock.now()) - record.at < STROBE_MS
+
+    const panel = () => {
+      if (!('Raster' in elements) || e.props.bodyColumns < PANEL_WIDTH || e.props.maxRows < PANEL_ROWS) return undefined
+      const { Raster } = elements
+      const ink = isStrobe ? INK : WHITE
+      const status = !record.decision
+        ? Text({ bold: true, color: INK, backgroundColor: YELLOW, children: [' 단속 중 '] })
+        : record.decision === '통과'
+          ? Text({ bold: true, color: INK, backgroundColor: GREEN, children: [' 통과했어요 '] })
+          : Text({ bold: true, color: WHITE, backgroundColor: RED, children: [' 정차했어요 '] })
+      return Box({
+        width: PANEL_WIDTH,
+        flexDirection: 'column',
+        backgroundColor: isStrobe ? STROBE : SCREEN,
+        children: [
+          Raster({ key: 'stripe-top', ...stripe(PANEL_WIDTH) }),
+          Box({
+            flexDirection: 'row',
+            columnGap: 2,
+            paddingX: 1,
+            children: [
+              Box({ backgroundColor: SIGN, paddingX: 1, children: [Raster({ key: 'camera', ...icon })] }),
+              Box({
+                flexDirection: 'column',
+                flexGrow: 1,
+                children: [
+                  Box({
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    children: [
+                      Box({
+                        flexDirection: 'row',
+                        columnGap: 1,
+                        children: [Text({ bold: true, color: WHITE, backgroundColor: SIGN, children: [` 📸 ${record.label} `] }), status],
+                      }),
+                      Text({ bold: true, color: isStrobe ? INK : RED, children: ['SPEED CAMERA'] }),
+                    ],
+                  }),
+                  Text({ bold: true, color: ink, children: [sign?.note ?? ''] }),
+                  Text({ color: isStrobe ? INK : DIM, wrap: 'truncate-end', children: [`$ ${short(record.command)}`] }),
+                ],
+              }),
+            ],
+          }),
+          Raster({ key: 'stripe-bottom', ...stripe(PANEL_WIDTH) }),
+        ],
+      })
+    }
+
+    const line = () => {
+      const status = record.decision
+        ? Text({ bold: true, color: record.decision === '통과' ? GREEN : RED, children: [record.decision === '통과' ? '통과했어요' : '정차했어요'] })
+        : Text({ bold: true, color: RED, children: ['단속 중'] })
+      return Box({
+        flexDirection: 'row',
+        columnGap: 1,
+        children: [
+          Text({ bold: true, color: RED, children: [`📸 [${record.label}]`] }),
+          status,
+          Text({ dimColor: true, wrap: 'truncate-end', children: [short(record.command)] }),
+        ],
+      })
+    }
+
+    const camera = panel() ?? line()
     const below = await next(e)
     return below ? Box({ flexDirection: 'column', children: [camera, below] }) : camera
   })
