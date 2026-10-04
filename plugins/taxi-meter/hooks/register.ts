@@ -4,7 +4,8 @@ type Tier = '일반' | '모범' | '블랙'
 type Limit = { kind: string; percentUsed: number; resetsAt?: string }
 type Ledger = { since: string; totalUsd: number; days: Record<string, number> }
 type Line = { text: string; color?: string; bold?: boolean; dim?: boolean }
-type View = { usd: number; limits: Limit[]; model?: string; longHaul: boolean; isWorking: boolean; isDemo: boolean }
+type State = '빈차' | '주행' | '대기' | '하차'
+type View = { usd: number; limits: Limit[]; model?: string; longHaul: boolean; isWorking: boolean; isDemo: boolean; speed: number; context?: number }
 type Demo = { elapsed: number; resetsAt: string; ticks: number; warned: number }
 
 const RECEIPT = 'taxi-receipt'
@@ -19,15 +20,35 @@ const DAY_MS = 86_400_000
 const RED = '#ff3b30'
 const YELLOW = '#ffcc00'
 const GREEN = '#34c759'
-const DEFAULT_COLOR = 0x01000000
-const LED_ON = 0xff3b30
-const LED_OFF = 0x2a0907
 const BAR = 10
+
+const PANEL_WIDTH = 70
+const PANEL_ROWS = 9
+const SCREEN = '#121212'
+const SCREEN_RGB = 0x121212
+const BEZEL = '#5f656d'
+const DIGIT_RGB = 0xf2f6ff
+const STOP_RGB = 0xff3b30
+const HORSE_RGB = 0x5ee35a
+const HORSE_IDLE_RGB = 0x2f7a33
+const BRAND = '#ffd60a'
+const PURPLE = '#d07cff'
+const BLUE = '#4d8dff'
+const LCD_GREEN = '#b6f24a'
+const LEGEND = '#9aa0a6'
+const KEY_TEXT = '#111111'
+
+const KEYS: readonly { label: string; on: string; off: string }[] = [
+  { label: '빈차', on: '#f4f4f4', off: '#3b3d40' },
+  { label: '주행', on: '#bdb8ff', off: '#2f2d4d' },
+  { label: '할증', on: '#ff5c8a', off: '#4a1d2a' },
+  { label: '복합', on: '#ffd60a', off: '#463b0a' },
+  { label: '지불', on: '#8fe04c', off: '#24401a' },
+]
 
 const DEMO_STEP_MS = 100
 const DEMO_BOARD_MS = 600
 const DEMO_OPUS_MS = 1_500
-const DEMO_LONG_HAUL_MS = 5_000
 const DEMO_NEAR_MS = 7_000
 const DEMO_ARRIVE_MS = 10_500
 const DEMO_USD = 34.5
@@ -35,22 +56,56 @@ const DEMO_TICK_WON = 2_000
 const DEMO_FIVE_HOUR_FROM = 41
 const DEMO_WEEK_FROM = 23
 const DEMO_WEEK_TO = 31
+const DEMO_CONTEXT_FROM = 20
+const DEMO_CONTEXT_TO = 85
 
 const FONT: Record<string, readonly string[]> = {
-  '0': ['111', '101', '101', '101', '111'],
-  '1': ['010', '110', '010', '010', '111'],
-  '2': ['111', '001', '111', '100', '111'],
-  '3': ['111', '001', '111', '001', '111'],
-  '4': ['101', '101', '111', '001', '001'],
-  '5': ['111', '100', '111', '001', '111'],
-  '6': ['111', '100', '111', '101', '111'],
-  '7': ['111', '001', '010', '010', '010'],
-  '8': ['111', '101', '111', '101', '111'],
-  '9': ['111', '101', '111', '001', '111'],
-  ',': ['0', '0', '0', '1', '1'],
+  '0': ['.#######.', '##.....##', '##.....##', '##.....##', '##.....##', '##.....##', '##.....##', '.#######.'],
+  '1': ['...###...', '.#####...', '....##...', '....##...', '....##...', '....##...', '....##...', '.#######.'],
+  '2': ['.#######.', '##.....##', '.......##', '.....###.', '...###...', '.###.....', '##.......', '#########'],
+  '3': ['.#######.', '##.....##', '.......##', '...#####.', '.......##', '.......##', '##.....##', '.#######.'],
+  '4': ['.....###.', '....####.', '...##.##.', '..##..##.', '.##...##.', '#########', '......##.', '......##.'],
+  '5': ['#########', '##.......', '##.......', '########.', '.......##', '.......##', '##.....##', '.#######.'],
+  '6': ['..######.', '.##......', '##.......', '########.', '##.....##', '##.....##', '##.....##', '.#######.'],
+  '7': ['#########', '.......##', '......##.', '.....##..', '....##...', '...##....', '...##....', '...##....'],
+  '8': ['.#######.', '##.....##', '##.....##', '.#######.', '##.....##', '##.....##', '##.....##', '.#######.'],
+  '9': ['.#######.', '##.....##', '##.....##', '##.....##', '.########', '.......##', '......##.', '.######..'],
+  ',': ['...', '...', '...', '...', '...', '.##', '.##', '##.'],
 }
 
+const HORSE: readonly (readonly string[])[] = [
+  [
+    '..................##..',
+    '................######',
+    '...............####.##',
+    '##............####....',
+    '.###############......',
+    '..#############.......',
+    '..##.##.....##.##.....',
+    '.##...##...##...##....',
+  ],
+  [
+    '..................##..',
+    '................######',
+    '...............####.##',
+    '.#............####....',
+    '################......',
+    '..#############.......',
+    '...##.##...##.##......',
+    '...##.##...##.##......',
+  ],
+].map((rows) => rows.map((row) => [...row].reverse().join('')))
+
+const QUADRANT = [' ', '▘', '▝', '▀', '▖', '▌', '▞', '▛', '▗', '▚', '▐', '▜', '▄', '▙', '▟', '█']
+
 const TIER_COLOR: Record<Tier, string> = { 일반: 'gray', 모범: YELLOW, 블랙: 'white' }
+
+const STATE_LAMP: Record<State, Line> = {
+  하차: { text: '[하차]', color: RED, bold: true },
+  주행: { text: '[주행]', color: GREEN, bold: true },
+  빈차: { text: '[빈차]', color: RED, bold: true },
+  대기: { text: '[대기]', color: YELLOW },
+}
 
 const positive = (value: unknown, fallback: number) =>
   typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback
@@ -124,25 +179,28 @@ const base64 = (bytes: Uint8Array) => {
   return btoa(binary)
 }
 
-const ledDigits = (text: string) => {
-  const columns: string[] = ['00000']
+const quadrants = (bitmap: readonly string[], on: number, off: number) => {
+  const width = Math.ceil(Math.max(...bitmap.map((row) => row.length)) / 2) * 2
+  const height = Math.ceil(bitmap.length / 2) * 2
+  const lit = (x: number, y: number) => bitmap[y]?.[x] === '#'
+  const numbers: number[] = []
+  for (let y = 0; y < height; y += 2) {
+    for (let x = 0; x < width; x += 2) {
+      const mask = (lit(x, y) ? 1 : 0) | (lit(x + 1, y) ? 2 : 0) | (lit(x, y + 1) ? 4 : 0) | (lit(x + 1, y + 1) ? 8 : 0)
+      numbers.push(QUADRANT[mask].codePointAt(0) ?? 32, on, off)
+    }
+  }
+  return { columns: width / 2, rows: height / 2, cells: base64(new Uint8Array(Uint32Array.from(numbers).buffer)) }
+}
+
+const fareBitmap = (text: string) => {
+  const rows = Array.from({ length: 8 }, () => '')
   for (const char of text) {
     const glyph = FONT[char]
     if (!glyph) continue
-    for (let x = 0; x < glyph[0].length; x++) columns.push(glyph.map((row) => row[x]).join(''))
-    columns.push('00000')
+    glyph.forEach((row, y) => (rows[y] += `${row}.`))
   }
-  const rows = 3
-  const numbers: number[] = []
-  for (let y = 0; y < rows; y++) {
-    for (const column of columns) {
-      const top = column[y * 2] === '1'
-      const bottom = column[y * 2 + 1] === '1'
-      const char = top && bottom ? '█' : top ? '▀' : bottom ? '▄' : ' '
-      numbers.push(char.codePointAt(0) ?? 32, top || bottom ? LED_ON : DEFAULT_COLOR, LED_OFF)
-    }
-  }
-  return { columns: columns.length, rows, cells: base64(new Uint8Array(Uint32Array.from(numbers).buffer)) }
+  return rows
 }
 
 export const register: Register = (on, options) => {
@@ -152,8 +210,9 @@ export const register: Register = (on, options) => {
   const tickWon = positive(options.tick_won, 1000)
 
   let startedAt = 0
-  let seededUsd = 0
-  let costUsd = 0
+  let lastCostUsd = 0
+  let rideUsd = 0
+  let sessionUsd = 0
   let limits: Limit[] = []
   let contextPercent: number | undefined
   let model: string | undefined
@@ -164,13 +223,13 @@ export const register: Register = (on, options) => {
   let longHaulCount = 0
   let peakFiveHour = 0
   let tokens = 0
+  let speed = 0
   const tokensByTier: Record<Tier, number> = { 일반: 0, 모범: 0, 블랙: 0 }
   let ledger: Ledger = { since: '', totalUsd: 0, days: {} }
   let timer: { cancel: () => void } | undefined
   let demo: Demo | undefined
   let demoTimer: { cancel: () => void } | undefined
 
-  const tripUsd = () => Math.max(0, costUsd - seededUsd)
   const fare = (usd: number) => Math.round((usd * rate) / 10) * 10
   const won = (usd: number) => `₩${comma(fare(usd))}`
   const limitOf = (kind: string) => limits.find((limit) => limit.kind === kind)
@@ -181,7 +240,16 @@ export const register: Register = (on, options) => {
     return sum
   }
 
-  const realView = (isWorking: boolean): View => ({ usd: tripUsd(), limits, model, longHaul, isWorking, isDemo: false })
+  const realView = (isWorking: boolean): View => ({
+    usd: rideUsd,
+    limits,
+    model,
+    longHaul,
+    isWorking,
+    isDemo: false,
+    speed: isWorking ? speed : 0,
+    context: contextPercent,
+  })
 
   const demoView = (ride: Demo): View => {
     const between = (from: number, to: number) => Math.min(1, Math.max(0, (ride.elapsed - from) / (to - from)))
@@ -192,6 +260,8 @@ export const register: Register = (on, options) => {
       : ride.elapsed <= DEMO_NEAR_MS
         ? DEMO_FIVE_HOUR_FROM + (90 - DEMO_FIVE_HOUR_FROM) * between(DEMO_BOARD_MS, DEMO_NEAR_MS)
         : 90 + 9 * between(DEMO_NEAR_MS, DEMO_ARRIVE_MS)
+    const isWorking = ride.elapsed >= DEMO_BOARD_MS && !isArrived
+    const context = DEMO_CONTEXT_FROM + (DEMO_CONTEXT_TO - DEMO_CONTEXT_FROM) * progress
     return {
       usd: DEMO_USD * progress,
       limits: [
@@ -199,9 +269,11 @@ export const register: Register = (on, options) => {
         { kind: 'seven_day', percentUsed: Math.floor(DEMO_WEEK_FROM + (DEMO_WEEK_TO - DEMO_WEEK_FROM) * progress) },
       ],
       model: ride.elapsed >= DEMO_OPUS_MS ? 'claude-opus-5-5' : undefined,
-      longHaul: ride.elapsed >= DEMO_LONG_HAUL_MS,
-      isWorking: ride.elapsed >= DEMO_BOARD_MS && !isArrived,
+      longHaul: context >= LONG_HAUL_PERCENT,
+      isWorking,
       isDemo: true,
+      speed: isWorking ? 62 + 24 * Math.sin(ride.elapsed / 650) : 0,
+      context,
     }
   }
 
@@ -211,13 +283,14 @@ export const register: Register = (on, options) => {
     demo = undefined
   }
 
-  const status = (view: View): Line => {
+  const stateOf = (view: View): State => {
     const five = view.limits.find((limit) => limit.kind === 'five_hour')
-    if (five && five.percentUsed >= 100) return { text: '[하차]', color: RED, bold: true }
-    if (view.isWorking) return { text: '[주행]', color: GREEN, bold: true }
-    if (view.usd === 0) return { text: '[빈차]', color: RED, bold: true }
-    return { text: '[대기]', color: YELLOW }
+    if (five && five.percentUsed >= 100) return '하차'
+    if (view.isWorking) return '주행'
+    return view.usd === 0 ? '빈차' : '대기'
   }
+
+  const status = (view: View): Line => STATE_LAMP[stateOf(view)]
 
   const lamps = (view: View): Line[] => {
     const tier = tierOf(view.model)
@@ -259,7 +332,8 @@ export const register: Register = (on, options) => {
     const week = limitOf('seven_day')
     return [
       '🚕 클로드 택시 미터기',
-      `이번 승차 ${won(tripUsd())} (API 정가 환산 $${tripUsd().toFixed(2)} · 환율 ${comma(rate)}원)`,
+      `이번 승차 ${won(rideUsd)} (API 정가 환산 $${rideUsd.toFixed(2)} · 환율 ${comma(rate)}원)`,
+      `이번 세션 ${won(sessionUsd)} (API 정가 환산 $${sessionUsd.toFixed(2)})`,
       `오늘 ${won(recentUsd(now, 1))} · 최근 7일 ${won(recentUsd(now, 7))} · ${monthDay(ledger.since)}부터 ${won(ledger.totalUsd)}`,
       five || week ? limitLine(realView(false)).text : '한도: 아직 응답이 없어요',
       `차종 ${tierOf(model) ?? '-'}${model ? ` (${model})` : ''} · 컨텍스트 ${contextPercent === undefined ? '-' : `${contextPercent}%`}`,
@@ -278,7 +352,7 @@ export const register: Register = (on, options) => {
     const result = await next(e)
     await $.command.register({
       name: 'meter',
-      description: '택시 미터기: 이번 승차·오늘·누적 요금과 한도 (reset은 누적 초기화, demo는 촬영용 데모 주행)',
+      description: '택시 미터기: 이번 승차·세션·오늘·누적 요금과 한도 (reset은 미터기와 누적 초기화, demo는 촬영용 데모 주행)',
       argumentHint: '[reset|demo]',
       immediate: true,
     })
@@ -288,8 +362,7 @@ export const register: Register = (on, options) => {
     ledger = isLedger(saved) ? saved : { since: new Date(now).toISOString(), totalUsd: 0, days: {} }
     const usage = await $.session.usage()
     startedAt = usage.startedAt || now
-    seededUsd = usage.cost?.usd ?? 0
-    costUsd = seededUsd
+    lastCostUsd = usage.cost?.usd ?? 0
     limits = [...usage.rateLimits]
     contextPercent = usage.context.percent
     return result
@@ -303,6 +376,10 @@ export const register: Register = (on, options) => {
 
   on('turn.start', async ($, e, next) => {
     endDemo()
+    if (e.text) {
+      rideUsd = 0
+      ticks = 0
+    }
     timer?.cancel()
     timer = $.clock.every(250, () => {
       frame += 1
@@ -324,8 +401,11 @@ export const register: Register = (on, options) => {
 
   on('turn.step', async function* ($, e, next) {
     if (!e.agentId) model = e.model
+    const stepStartedAt = await $.clock.now()
     const result = yield* next(e)
     const usage = result.usage
+    const seconds = ((await $.clock.now()) - stepStartedAt) / 1000
+    if (!e.agentId && usage?.output_tokens && seconds > 0) speed = usage.output_tokens / seconds
     if (usage) {
       const used =
         (usage.input_tokens ?? 0) +
@@ -349,13 +429,16 @@ export const register: Register = (on, options) => {
     const five = limitOf('five_hour')
     if (five) peakFiveHour = Math.max(peakFiveHour, five.percentUsed)
 
-    if (e.cost && e.cost.usd > costUsd) {
-      const delta = e.cost.usd - costUsd
-      costUsd = e.cost.usd
+    const costUsd = e.cost?.usd
+    const delta = costUsd === undefined ? 0 : costUsd >= lastCostUsd ? costUsd - lastCostUsd : costUsd
+    if (costUsd !== undefined) lastCostUsd = costUsd
+    if (delta > 0) {
+      rideUsd += delta
+      sessionUsd += delta
       const saved = await $.store.get(LEDGER)
       ledger = credit(isLedger(saved) ? saved : ledger, await $.clock.now(), delta)
       await $.store.set(LEDGER, ledger)
-      const step = Math.floor(fare(tripUsd()) / tickWon)
+      const step = Math.floor(fare(rideUsd) / tickWon)
       if (step > ticks) {
         ticks = step
         if (sound) $.audio.play({ asset: TICK }).catch(() => {})
@@ -376,7 +459,11 @@ export const register: Register = (on, options) => {
     if (arg === 'reset') {
       ledger = { since: new Date(now).toISOString(), totalUsd: 0, days: {} }
       await $.store.set(LEDGER, ledger)
-      return { text: '누적 요금을 0원으로 초기화했어요.' }
+      rideUsd = 0
+      sessionUsd = 0
+      ticks = 0
+      $.ui.invalidate('ui.render')
+      return { text: '미터기와 누적 요금을 0원으로 초기화했어요.' }
     }
     if (arg === 'demo') {
       if (demo) {
@@ -436,36 +523,124 @@ export const register: Register = (on, options) => {
     const lampRow = lamps(view).map(text)
     const limit = text(limitLine(view))
     const horse = Text({ children: [track()] })
-    const label = view.isDemo ? '원 · 데모 주행' : '원 · API 정가 환산'
 
-    const meter =
-      style === 'led' && e.surface === 'terminal' && 'Raster' in elements
-        ? Box({
+    const panel = () => {
+      if (!('Raster' in elements)) return undefined
+      const { Raster } = elements
+      const state = stateOf(view)
+      const tier = tierOf(view.model)
+      const lit = [
+        state === '빈차',
+        state === '주행',
+        tier === '모범' || tier === '블랙',
+        view.longHaul,
+        state === '대기' || state === '하차',
+      ]
+      const cell = (width: number, children: ReturnType<typeof Text>[]) =>
+        Box({ width, flexDirection: 'column', children })
+      const blank = Text({ children: [' '] })
+      const legend = limitLine(view)
+
+      return Box({
+        width: PANEL_WIDTH,
+        flexDirection: 'column',
+        borderStyle: 'round',
+        borderColor: BEZEL,
+        backgroundColor: SCREEN,
+        paddingX: 1,
+        children: [
+          Box({
             flexDirection: 'row',
-            columnGap: 2,
+            justifyContent: 'space-between',
             children: [
-              elements.Raster({ key: 'fare', ...ledDigits(comma(fare(view.usd))) }),
               Box({
-                flexDirection: 'column',
+                flexDirection: 'row',
+                columnGap: 3,
                 children: [
-                  Box({ flexDirection: 'row', columnGap: 1, children: [Text({ dimColor: true, children: [label] }), ...lampRow] }),
-                  horse,
-                  limit,
+                  Text({ color: BRAND, bold: true, children: ['클로드·택시+'] }),
+                  Text({ color: BLUE, bold: true, children: [tier ?? '--'] }),
+                  Text({ color: LCD_GREEN, bold: true, children: [`${view.speed.toFixed(1)} tok/s`] }),
                 ],
               }),
+              Text({ color: LEGEND, children: ['ELECTRONIC TAXIMETER'] }),
             ],
-          })
-        : Box({
+          }),
+          Box({
             flexDirection: 'row',
             columnGap: 1,
             children: [
-              Text({ color: RED, bold: true, children: [won(view.usd)] }),
-              ...lampRow,
-              horse,
-              limit,
-              ...(view.isDemo ? [Text({ dimColor: true, children: ['데모 주행'] })] : []),
+              cell(11, [
+                Raster({
+                  key: 'horse',
+                  ...quadrants(HORSE[view.isWorking ? frame % HORSE.length : 0], view.isWorking ? HORSE_RGB : HORSE_IDLE_RGB, SCREEN_RGB),
+                }),
+              ]),
+              Box({
+                flexGrow: 1,
+                flexDirection: 'row',
+                justifyContent: 'flex-end',
+                children: [
+                  Raster({ key: 'fare', ...quadrants(fareBitmap(comma(fare(view.usd))), state === '하차' ? STOP_RGB : DIGIT_RGB, SCREEN_RGB) }),
+                ],
+              }),
+              cell(5, [blank, Text({ color: '#ffffff', bold: true, children: ['원'] }), Text({ color: LEGEND, children: ['(WON)'] })]),
+              cell(8, [
+                blank,
+                Text({ color: LCD_GREEN, bold: true, children: [view.context === undefined ? '--%' : `${Math.round(view.context)}%`] }),
+                Text({ color: LEGEND, children: ['컨텍스트'] }),
+              ]),
             ],
-          })
+          }),
+          Box({
+            flexDirection: 'row',
+            columnGap: 1,
+            children: [
+              Text({ color: '#ffffff', backgroundColor: BLUE, bold: true, children: [` ${state} `] }),
+              Text({
+                color: legend.color ?? PURPLE,
+                ...(legend.bold ? { bold: true } : {}),
+                wrap: 'truncate-end',
+                children: [legend.text],
+              }),
+            ],
+          }),
+          Box({
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            children: [
+              Box({
+                flexDirection: 'row',
+                columnGap: 1,
+                children: KEYS.map((key, i) =>
+                  Text({
+                    color: lit[i] ? KEY_TEXT : LEGEND,
+                    backgroundColor: lit[i] ? key.on : key.off,
+                    bold: lit[i],
+                    children: [`  ${key.label}  `],
+                  }),
+                ),
+              }),
+              Text({ color: LEGEND, children: [view.isDemo ? '데모 주행' : 'API 정가 환산'] }),
+            ],
+          }),
+        ],
+      })
+    }
+
+    const fits = e.surface === 'terminal' && e.props.bodyColumns >= PANEL_WIDTH && e.props.maxRows >= PANEL_ROWS
+    const meter =
+      (style === 'led' && fits ? panel() : undefined) ??
+      Box({
+        flexDirection: 'row',
+        columnGap: 1,
+        children: [
+          Text({ color: RED, bold: true, children: [won(view.usd)] }),
+          ...lampRow,
+          horse,
+          limit,
+          ...(view.isDemo ? [Text({ dimColor: true, children: ['데모 주행'] })] : []),
+        ],
+      })
 
     const below = await next(e)
     return below ? Box({ flexDirection: 'column', children: [meter, below] }) : meter
@@ -493,8 +668,8 @@ export const register: Register = (on, options) => {
         row('주행', plain(`${comma(tokens)} 토큰 · ${shares()}`)),
         row(
           '요금',
-          Text({ bold: true, color: RED, children: [won(tripUsd())] }),
-          Text({ dimColor: true, children: [`API 정가 $${tripUsd().toFixed(2)} · 환율 ${comma(rate)}원`] }),
+          Text({ bold: true, color: RED, children: [won(sessionUsd)] }),
+          Text({ dimColor: true, children: [`API 정가 $${sessionUsd.toFixed(2)} · 환율 ${comma(rate)}원`] }),
         ),
         row('표시등', plain(`장거리 ${longHaulCount}회 · 5시간 최고 ${peakFiveHour}%`)),
         row('누적', plain(`오늘 ${won(recentUsd(now, 1))} · ${monthDay(ledger.since)}부터 ${won(ledger.totalUsd)}`)),

@@ -14,7 +14,7 @@ const band = (surface: 'terminal' | 'desktop' = 'terminal', isWorking = false) =
   surface,
   component: 'AbovePrompt' as const,
   viewport: { columns: 160, rows: 40 },
-  props: { hasSurvey: false, isWorking, maxRows: 8, bodyColumns: 150, scroll: { offset: 0, bodyRows: 8 }, view: {} },
+  props: { hasSurvey: false, isWorking, maxRows: 20, bodyColumns: 150, scroll: { offset: 0, bodyRows: 20 }, view: {} },
 })
 
 const receiptPane = {
@@ -51,6 +51,7 @@ const ride = async ($: Engine, on: On, { cost = 0, limits = [] as Limit[], ledge
   on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
   on('session.start', () => ({ cwd: '/work' }))
   on('session.measure', ($, e) => ({ changed: e.changed }))
+  on('turn.start', ($, e) => ({ turnId: e.turnId }))
   on('turn.step', async function* ($, e) {
     return {
       turnId: e.turnId,
@@ -73,7 +74,9 @@ const ride = async ($: Engine, on: On, { cost = 0, limits = [] as Limit[], ledge
     while (piece.done !== true) piece = await stream.next()
   }
 
-  return { commands, sounds, saved, clock, measure, step }
+  const prompt = (text: string) => $.turn.start({ text, turnId: `t-${text}` })
+
+  return { commands, sounds, saved, clock, measure, step, prompt }
 }
 
 test('session.start에서 /meter와 /receipt를 등록한다', COMPACT, async ($, on) => {
@@ -126,20 +129,78 @@ test('모델에 따라 차종 표시등을 바꾸고 컨텍스트 50% 이상이�
   expect(await ui.find({ type: 'Text', text: '[주행]' })).toBeDefined()
 })
 
-test('LED 방식은 터미널에서 Raster로, 데스크톱에서는 한 줄로 그린다', LED, async ($, on) => {
-  const { measure } = await ride($, on)
-  await measure(5)
+test('LED 방식은 터미널에서 미터기 패널로, 데스크톱이나 좁은 창에서는 한 줄로 그린다', LED, async ($, on) => {
+  const { measure, step } = await ride($, on)
+  await step('claude-opus-5-5')
+  await measure(5, [], 62)
   const terminal = await $.ui.mount(band('terminal'))
   expect(await terminal.find({ type: 'Raster', key: 'fare' })).toBeDefined()
-  expect(await terminal.find({ type: 'Text', text: '원 · API 정가 환산' })).toBeDefined()
+  expect(await terminal.find({ type: 'Raster', key: 'horse' })).toBeDefined()
+  expect(await terminal.find({ type: 'Text', text: '원' })).toBeDefined()
+  expect(await terminal.find({ type: 'Text', text: 'API 정가 환산' })).toBeDefined()
+  expect(await terminal.find({ type: 'Text', text: ' 대기 ' })).toBeDefined()
+  expect(await terminal.find({ type: 'Text', text: '62%' })).toBeDefined()
+  for (const key of ['할증', '복합', '지불']) {
+    expect((await terminal.find({ type: 'Text', text: `  ${key}  ` }))?.props.bold).toBe(true)
+  }
+  for (const key of ['빈차', '주행']) {
+    expect((await terminal.find({ type: 'Text', text: `  ${key}  ` }))?.props.bold).toBe(false)
+  }
   await terminal.unmount()
+
+  const narrow = await $.ui.mount({ ...band('terminal'), props: { ...band('terminal').props, bodyColumns: 60 } })
+  expect(await narrow.find({ type: 'Raster', key: 'fare' })).toBeUndefined()
+  expect(await narrow.find({ type: 'Text', text: '₩7,000' })).toBeDefined()
+  await narrow.unmount()
 
   const desktop = await $.ui.mount(band('desktop'))
   expect(await desktop.find({ type: 'Raster', key: 'fare' })).toBeUndefined()
   expect(await desktop.find({ type: 'Text', text: '₩7,000' })).toBeDefined()
 })
 
-test('/meter는 이번 승차·오늘·누적을 보고하고 /meter reset은 누적만 비운다', COMPACT, async ($, on) => {
+test('새 프롬프트마다 0원에서 새로 승차하고 세션 합계는 이어서 센다', COMPACT, async ($, on) => {
+  const { measure, prompt } = await ride($, on)
+  await prompt('첫 요청')
+  await measure(2)
+  await prompt('두 번째 요청')
+  let ui = await $.ui.mount(band())
+  expect(await ui.find({ type: 'Text', text: '₩0' })).toBeDefined()
+  await ui.unmount()
+
+  await measure(3)
+  ui = await $.ui.mount(band())
+  expect(await ui.find({ type: 'Text', text: '₩1,400' })).toBeDefined()
+  const report = await $.command.run({ command: 'meter', args: '' })
+  expect(report.text).toContain('이번 승차 ₩1,400')
+  expect(report.text).toContain('이번 세션 ₩4,200')
+})
+
+test('/clear처럼 엔진 비용이 줄면 그 값을 새 기준으로 삼아 계속 센다', COMPACT, async ($, on) => {
+  const { measure, prompt } = await ride($, on, { cost: 5 })
+  await measure(6)
+  await prompt('클리어 후 요청')
+  await measure(0.5)
+  await measure(1)
+  const ui = await $.ui.mount(band())
+  expect(await ui.find({ type: 'Text', text: '₩1,400' })).toBeDefined()
+})
+
+test('/meter reset은 화면 요금과 누적을 모두 0원으로 만든다', COMPACT, async ($, on) => {
+  const { measure, saved } = await ride($, on)
+  await measure(2)
+  const reset = await $.command.run({ command: 'meter', args: 'reset' })
+  expect(reset.text).toBe('미터기와 누적 요금을 0원으로 초기화했어요.')
+  expect((saved.get('ledger') as { totalUsd: number }).totalUsd).toBe(0)
+  let ui = await $.ui.mount(band())
+  expect(await ui.find({ type: 'Text', text: '₩0' })).toBeDefined()
+  await ui.unmount()
+
+  await measure(3)
+  ui = await $.ui.mount(band())
+  expect(await ui.find({ type: 'Text', text: '₩1,400' })).toBeDefined()
+})
+
+test('/meter는 이번 승차·세션·오늘·누적을 보고하고 /meter reset은 누적도 비운다', COMPACT, async ($, on) => {
   const since = new Date(2026, 8, 20).toISOString()
   const today = '2026-10-04'
   const { measure, saved } = await ride($, on, {
@@ -152,8 +213,9 @@ test('/meter는 이번 승차·오늘·누적을 보고하고 /meter reset은 �
   expect(report.text).toContain('오늘 ₩4,200 · 최근 7일 ₩8,400 · 9/20부터 ₩16,800')
   expect(report.text).toContain('5시간 ███░░░░░░░ 30% · 19:00 리셋')
 
+  expect(report.text).toContain('이번 세션 ₩2,800')
   const reset = await $.command.run({ command: 'meter', args: 'reset' })
-  expect(reset.text).toBe('누적 요금을 0원으로 초기화했어요.')
+  expect(reset.text).toBe('미터기와 누적 요금을 0원으로 초기화했어요.')
   expect((saved.get('ledger') as { totalUsd: number }).totalUsd).toBe(0)
 })
 
