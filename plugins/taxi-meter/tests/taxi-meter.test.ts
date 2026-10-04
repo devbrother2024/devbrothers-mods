@@ -424,3 +424,30 @@ test('모델을 바꾸면 재캐시 예상 요금을 토스트로 알리고 작�
   await swap('claude-sonnet-5-5', 0.001)
   expect(toasts).toEqual(['차종 변경: 모범 · 다음 요청에 재캐시 약 ₩2,660 붙어요'])
 })
+
+test('미터기는 차종과 함께 실제 모델 이름을 보인다', LED, async ($, on) => {
+  await ride($, on)
+  let ui = await $.ui.mount(band('terminal'))
+  expect(await ui.find({ type: 'Text', text: '모델 확인 중' })).toBeDefined()
+  await ui.unmount()
+
+  await $.classic.SessionStart({ source: 'startup', model: 'claude-opus-5-5' })
+  ui = await $.ui.mount(band('terminal'))
+  expect(await ui.find({ type: 'Text', text: '모범' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'Opus 5.5' })).toBeDefined()
+  await ui.unmount()
+
+  await $.classic.PostModelSwitch({
+    from_model: 'claude-opus-5-5',
+    to_model: 'claude-haiku-4-5-20251001',
+    requested_model: 'haiku',
+    source: 'command',
+    context_tokens: 0,
+    prompt_cache_warm: false,
+    cache_ttl: '5m',
+    estimated_cache_write_usd: 0,
+    estimate_basis: 'catalog',
+  })
+  ui = await $.ui.mount({ ...band('terminal'), props: { ...band('terminal').props, bodyColumns: 60 } })
+  expect(await ui.find({ type: 'Text', text: 'Haiku 4.5' })).toBeDefined()
+})

@@ -158,6 +158,14 @@ const tierOf = (model?: string): Tier | undefined => {
   return '일반'
 }
 
+const modelName = (model?: string) => {
+  if (!model) return undefined
+  const match = /claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?!\d)/i.exec(model)
+  if (!match) return model.replace(/\[.*\]$/, '')
+  const [, family, major, minor] = match
+  return `${family[0].toUpperCase()}${family.slice(1).toLowerCase()} ${major}${minor ? `.${minor}` : ''}`
+}
+
 const isLedger = (value: unknown): value is Ledger =>
   typeof value === 'object' &&
   value !== null &&
@@ -622,6 +630,7 @@ export const register: Register = (on, options) => {
                 children: [
                   Text({ color: BRAND, bold: true, children: ['클로드·택시+'] }),
                   Text({ color: BLUE, bold: true, children: [tier ?? '--'] }),
+                  Text({ color: '#ffffff', children: [modelName(view.model) ?? '모델 확인 중'] }),
                   Text({ color: LCD_GREEN, bold: true, children: [`${view.speed.toFixed(1)} tok/s`] }),
                 ],
               }),
@@ -702,6 +711,7 @@ export const register: Register = (on, options) => {
           Text({ color: RED, bold: true, children: [won(view.usd)] }),
           ...(view.prompt > 0 ? [Text({ dimColor: true, children: [`방금 +${won(view.prompt)}`] })] : []),
           ...lampRow,
+          ...(view.model ? [Text({ dimColor: true, children: [modelName(view.model) ?? ''] })] : []),
           horse,
           limit,
           ...(view.isDemo ? [Text({ dimColor: true, children: ['데모 주행'] })] : []),
