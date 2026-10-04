@@ -4,6 +4,8 @@ type Tier = '일반' | '모범' | '블랙'
 type Limit = { kind: string; percentUsed: number; resetsAt?: string }
 type Ledger = { since: string; totalUsd: number; days: Record<string, number> }
 type Line = { text: string; color?: string; bold?: boolean; dim?: boolean }
+type View = { usd: number; limits: Limit[]; model?: string; longHaul: boolean; isWorking: boolean; isDemo: boolean }
+type Demo = { elapsed: number; resetsAt: string; ticks: number; warned: number }
 
 const RECEIPT = 'taxi-receipt'
 const TICK = 'sounds/tick.wav'
@@ -20,6 +22,19 @@ const GREEN = '#34c759'
 const DEFAULT_COLOR = 0x01000000
 const LED_ON = 0xff3b30
 const LED_OFF = 0x2a0907
+const BAR = 10
+
+const DEMO_STEP_MS = 100
+const DEMO_BOARD_MS = 600
+const DEMO_OPUS_MS = 1_500
+const DEMO_LONG_HAUL_MS = 5_000
+const DEMO_NEAR_MS = 7_000
+const DEMO_ARRIVE_MS = 10_500
+const DEMO_USD = 34.5
+const DEMO_TICK_WON = 2_000
+const DEMO_FIVE_HOUR_FROM = 41
+const DEMO_WEEK_FROM = 23
+const DEMO_WEEK_TO = 31
 
 const FONT: Record<string, readonly string[]> = {
   '0': ['111', '101', '101', '101', '111'],
@@ -43,6 +58,11 @@ const positive = (value: unknown, fallback: number) =>
 const comma = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 
 const pad = (n: number) => String(n).padStart(2, '0')
+
+const bar = (percent: number) => {
+  const filled = Math.min(BAR, Math.max(0, Math.floor((percent / 100) * BAR)))
+  return '█'.repeat(filled) + '░'.repeat(BAR - filled)
+}
 
 const clockOfMs = (ms: number) => {
   const d = new Date(ms)
@@ -147,6 +167,8 @@ export const register: Register = (on, options) => {
   const tokensByTier: Record<Tier, number> = { 일반: 0, 모범: 0, 블랙: 0 }
   let ledger: Ledger = { since: '', totalUsd: 0, days: {} }
   let timer: { cancel: () => void } | undefined
+  let demo: Demo | undefined
+  let demoTimer: { cancel: () => void } | undefined
 
   const tripUsd = () => Math.max(0, costUsd - seededUsd)
   const fare = (usd: number) => Math.round((usd * rate) / 10) * 10
@@ -159,34 +181,65 @@ export const register: Register = (on, options) => {
     return sum
   }
 
-  const status = (isWorking: boolean): Line => {
-    const five = limitOf('five_hour')
+  const realView = (isWorking: boolean): View => ({ usd: tripUsd(), limits, model, longHaul, isWorking, isDemo: false })
+
+  const demoView = (ride: Demo): View => {
+    const between = (from: number, to: number) => Math.min(1, Math.max(0, (ride.elapsed - from) / (to - from)))
+    const progress = between(DEMO_BOARD_MS, DEMO_ARRIVE_MS)
+    const isArrived = ride.elapsed >= DEMO_ARRIVE_MS
+    const fiveHour = isArrived
+      ? 100
+      : ride.elapsed <= DEMO_NEAR_MS
+        ? DEMO_FIVE_HOUR_FROM + (90 - DEMO_FIVE_HOUR_FROM) * between(DEMO_BOARD_MS, DEMO_NEAR_MS)
+        : 90 + 9 * between(DEMO_NEAR_MS, DEMO_ARRIVE_MS)
+    return {
+      usd: DEMO_USD * progress,
+      limits: [
+        { kind: 'five_hour', percentUsed: Math.floor(fiveHour), resetsAt: ride.resetsAt },
+        { kind: 'seven_day', percentUsed: Math.floor(DEMO_WEEK_FROM + (DEMO_WEEK_TO - DEMO_WEEK_FROM) * progress) },
+      ],
+      model: ride.elapsed >= DEMO_OPUS_MS ? 'claude-opus-5-5' : undefined,
+      longHaul: ride.elapsed >= DEMO_LONG_HAUL_MS,
+      isWorking: ride.elapsed >= DEMO_BOARD_MS && !isArrived,
+      isDemo: true,
+    }
+  }
+
+  const endDemo = () => {
+    demoTimer?.cancel()
+    demoTimer = undefined
+    demo = undefined
+  }
+
+  const status = (view: View): Line => {
+    const five = view.limits.find((limit) => limit.kind === 'five_hour')
     if (five && five.percentUsed >= 100) return { text: '[하차]', color: RED, bold: true }
-    if (isWorking) return { text: '[주행]', color: GREEN, bold: true }
-    if (tripUsd() === 0) return { text: '[빈차]', color: RED, bold: true }
+    if (view.isWorking) return { text: '[주행]', color: GREEN, bold: true }
+    if (view.usd === 0) return { text: '[빈차]', color: RED, bold: true }
     return { text: '[대기]', color: YELLOW }
   }
 
-  const lamps = (isWorking: boolean): Line[] => {
-    const tier = tierOf(model)
+  const lamps = (view: View): Line[] => {
+    const tier = tierOf(view.model)
     return [
-      status(isWorking),
+      status(view),
       ...(tier ? [{ text: `[${tier}]`, color: TIER_COLOR[tier], bold: tier !== '일반' }] : []),
-      ...(longHaul ? [{ text: '[장거리]', color: 'cyan' }] : []),
+      ...(view.longHaul ? [{ text: '[장거리]', color: 'cyan' }] : []),
     ]
   }
 
-  const limitLine = (): Line => {
-    const five = limitOf('five_hour')
-    const week = limitOf('seven_day')
-    const credit = limitOf('spend_limit')
+  const limitLine = (view: View): Line => {
+    const find = (kind: string) => view.limits.find((limit) => limit.kind === kind)
+    const five = find('five_hour')
+    const week = find('seven_day')
+    const credit = find('spend_limit')
     if (!five && !week && !credit) return { text: '한도는 첫 응답 뒤에 표시돼요', dim: true }
     const reset = clockOf(five?.resetsAt)
     if (five && five.percentUsed >= 100) {
       return { text: `하차하셔야 합니다${reset ? ` · ${reset} 재승차` : ''}`, color: RED, bold: true }
     }
     const text = [
-      five ? `5시간 ${five.percentUsed}%${reset ? ` · ${reset} 리셋` : ''}` : undefined,
+      five ? `5시간 ${bar(five.percentUsed)} ${five.percentUsed}%${reset ? ` · ${reset} 리셋` : ''}` : undefined,
       week ? `주간 ${week.percentUsed}%` : undefined,
       credit ? `크레딧 한도 ${credit.percentUsed}%` : undefined,
     ]
@@ -208,7 +261,7 @@ export const register: Register = (on, options) => {
       '🚕 클로드 택시 미터기',
       `이번 승차 ${won(tripUsd())} (API 정가 환산 $${tripUsd().toFixed(2)} · 환율 ${comma(rate)}원)`,
       `오늘 ${won(recentUsd(now, 1))} · 최근 7일 ${won(recentUsd(now, 7))} · ${monthDay(ledger.since)}부터 ${won(ledger.totalUsd)}`,
-      five || week ? limitLine().text : '한도: 아직 응답이 없어요',
+      five || week ? limitLine(realView(false)).text : '한도: 아직 응답이 없어요',
       `차종 ${tierOf(model) ?? '-'}${model ? ` (${model})` : ''} · 컨텍스트 ${contextPercent === undefined ? '-' : `${contextPercent}%`}`,
     ].join('\n')
   }
@@ -225,8 +278,8 @@ export const register: Register = (on, options) => {
     const result = await next(e)
     await $.command.register({
       name: 'meter',
-      description: '택시 미터기: 이번 승차·오늘·누적 요금과 한도 (meter reset은 누적 초기화)',
-      argumentHint: '[reset]',
+      description: '택시 미터기: 이번 승차·오늘·누적 요금과 한도 (reset은 누적 초기화, demo는 촬영용 데모 주행)',
+      argumentHint: '[reset|demo]',
       immediate: true,
     })
     await $.command.register({ name: 'receipt', description: '택시 영수증 열기', immediate: true })
@@ -244,10 +297,12 @@ export const register: Register = (on, options) => {
 
   on('session.end', async ($, e, next) => {
     timer?.cancel()
+    endDemo()
     return next(e)
   })
 
   on('turn.start', async ($, e, next) => {
+    endDemo()
     timer?.cancel()
     timer = $.clock.every(250, () => {
       frame += 1
@@ -317,10 +372,46 @@ export const register: Register = (on, options) => {
 
   on('command.run', { command: 'meter' }, async ($, e) => {
     const now = await $.clock.now()
-    if (e.args.trim() === 'reset') {
+    const arg = e.args.trim()
+    if (arg === 'reset') {
       ledger = { since: new Date(now).toISOString(), totalUsd: 0, days: {} }
       await $.store.set(LEDGER, ledger)
       return { text: '누적 요금을 0원으로 초기화했어요.' }
+    }
+    if (arg === 'demo') {
+      if (demo) {
+        endDemo()
+        $.ui.invalidate('ui.render')
+        return { text: '데모 주행을 끝내고 실제 미터기로 돌아왔어요.' }
+      }
+      const reset = new Date(now)
+      reset.setHours(reset.getHours() + 4, 0, 0, 0)
+      demo = { elapsed: 0, resetsAt: reset.toISOString(), ticks: 0, warned: 0 }
+      frame = 0
+      demoTimer = $.clock.every(DEMO_STEP_MS, () => {
+        if (!demo) return
+        demo.elapsed += DEMO_STEP_MS
+        const view = demoView(demo)
+        if (view.isWorking) frame += 1
+        const step = Math.floor(fare(view.usd) / DEMO_TICK_WON)
+        if (step > demo.ticks) {
+          demo.ticks = step
+          if (sound) $.audio.play({ asset: TICK }).catch(() => {})
+        }
+        const five = view.limits[0].percentUsed
+        const level = five >= 100 ? 100 : five >= 90 ? 90 : 0
+        if (level > demo.warned) {
+          demo.warned = level
+          if (sound) $.audio.play({ asset: CHIME }).catch(() => {})
+        }
+        if (demo.elapsed >= DEMO_ARRIVE_MS) {
+          demoTimer?.cancel()
+          demoTimer = undefined
+        }
+        $.ui.invalidate('ui.render')
+      })
+      $.ui.invalidate('ui.render')
+      return {}
     }
     return { text: report(now) }
   })
@@ -341,10 +432,11 @@ export const register: Register = (on, options) => {
         ...(line.dim ? { dimColor: true } : {}),
         children: [line.text],
       })
-    const isWorking = e.props.isWorking
-    const lampRow = lamps(isWorking).map(text)
-    const limit = text(limitLine())
+    const view = demo ? demoView(demo) : realView(e.props.isWorking)
+    const lampRow = lamps(view).map(text)
+    const limit = text(limitLine(view))
     const horse = Text({ children: [track()] })
+    const label = view.isDemo ? '원 · 데모 주행' : '원 · API 정가 환산'
 
     const meter =
       style === 'led' && e.surface === 'terminal' && 'Raster' in elements
@@ -352,11 +444,11 @@ export const register: Register = (on, options) => {
             flexDirection: 'row',
             columnGap: 2,
             children: [
-              elements.Raster({ key: 'fare', ...ledDigits(comma(fare(tripUsd()))) }),
+              elements.Raster({ key: 'fare', ...ledDigits(comma(fare(view.usd))) }),
               Box({
                 flexDirection: 'column',
                 children: [
-                  Box({ flexDirection: 'row', columnGap: 1, children: [Text({ dimColor: true, children: ['원 · API 정가 환산'] }), ...lampRow] }),
+                  Box({ flexDirection: 'row', columnGap: 1, children: [Text({ dimColor: true, children: [label] }), ...lampRow] }),
                   horse,
                   limit,
                 ],
@@ -366,7 +458,13 @@ export const register: Register = (on, options) => {
         : Box({
             flexDirection: 'row',
             columnGap: 1,
-            children: [Text({ color: RED, bold: true, children: [won(tripUsd())] }), ...lampRow, horse, limit],
+            children: [
+              Text({ color: RED, bold: true, children: [won(view.usd)] }),
+              ...lampRow,
+              horse,
+              limit,
+              ...(view.isDemo ? [Text({ dimColor: true, children: ['데모 주행'] })] : []),
+            ],
           })
 
     const below = await next(e)
