@@ -30,6 +30,7 @@ const ride = async ($: Engine, on: On, { cost = 0, limits = [] as Limit[], ledge
   const commands: string[] = []
   const sounds: string[] = []
   let usd = cost
+  let cacheRead = 0
   const saved = new Map<string, unknown>(ledger ? [['ledger', ledger]] : [])
   const clock = mock.clock(on, { now: START })
   on('store.get', ($, e) => ({ value: saved.get(e.key) }))
@@ -49,6 +50,11 @@ const ride = async ($: Engine, on: On, { cost = 0, limits = [] as Limit[], ledge
     return { value: undefined }
   })
   on('ui.open', () => ({ value: { isPlaced: true } }))
+  const toasts: string[] = []
+  on('ui.toast', ($, e) => {
+    toasts.push(e.text)
+    return { value: undefined }
+  })
   on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
   on('session.start', () => ({ cwd: '/work' }))
   on('session.measure', ($, e) => ({ changed: e.changed }))
@@ -62,7 +68,7 @@ const ride = async ($: Engine, on: On, { cost = 0, limits = [] as Limit[], ledge
       answer: 'ok',
       toolUses: [],
       stopReason: 'end_turn',
-      usage: { input_tokens: 1000, output_tokens: 500, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: e.model },
+      usage: { input_tokens: 1000, output_tokens: 500, cache_read_input_tokens: cacheRead, cache_creation_input_tokens: 0, model: e.model },
     }
   })
 
@@ -83,7 +89,11 @@ const ride = async ($: Engine, on: On, { cost = 0, limits = [] as Limit[], ledge
     usd = value
   }
 
-  return { commands, sounds, saved, clock, measure, step, prompt, spend }
+  const readCache = (value: number) => {
+    cacheRead = value
+  }
+
+  return { commands, sounds, saved, clock, measure, step, prompt, spend, toasts, readCache }
 }
 
 test('session.start에서 /meter와 /receipt를 등록한다', COMPACT, async ($, on) => {
@@ -294,7 +304,7 @@ test('/receipt는 영수증 창을 열고 승차 정보와 요청별 요금을 �
   const pane = await $.ui.mount(receiptPane)
   expect(await pane.find({ type: 'Text', text: '영  수  증' })).toBeDefined()
   expect(await pane.find({ type: 'Text', text: '14:00 → 14:25 (25분)' })).toBeDefined()
-  expect(await pane.find({ type: 'Text', text: '처리 1,500 토큰(캐시 읽기 포함) · 일반 100%' })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: '새로 처리 1,500 · 캐시 재사용 0 토큰 · 일반 100%' })).toBeDefined()
   expect(await pane.find({ type: 'Text', text: '요금은 제목 생성·프롬프트 추천 같은 보이지 않는 호출까지 포함해요' })).toBeDefined()
   expect(await pane.find({ type: 'Text', text: '₩2,100' })).toBeDefined()
   expect(await pane.find({ type: 'Text', text: '2건 · ₩700 · ₩1,400' })).toBeDefined()
@@ -384,4 +394,33 @@ test('classic.SessionStart의 source가 clear이면 새 승차로 0원부터 센
   const ui = await $.ui.mount(band())
   expect(await ui.find({ type: 'Text', text: '₩0' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '[모범]' })).toBeDefined()
+})
+
+test('영수증은 새로 처리한 토큰과 캐시 재사용 토큰을 나눠 만 단위로 보인다', COMPACT, async ($, on) => {
+  const { step, readCache } = await ride($, on)
+  readCache(200_000)
+  await step('claude-sonnet-5-5')
+  await step('claude-sonnet-5-5')
+  await $.command.run({ command: 'receipt', args: '' })
+  const pane = await $.ui.mount(receiptPane)
+  expect(await pane.find({ type: 'Text', text: '새로 처리 3,000 · 캐시 재사용 40만 토큰 · 일반 100%' })).toBeDefined()
+})
+
+test('모델을 바꾸면 재캐시 예상 요금을 토스트로 알리고 작으면 조용하다', COMPACT, async ($, on) => {
+  const { toasts } = await ride($, on)
+  const swap = (to: string, usd: number) =>
+    $.classic.PostModelSwitch({
+      from_model: 'claude-sonnet-5-5',
+      to_model: to,
+      requested_model: null,
+      source: 'command',
+      context_tokens: 237_298,
+      prompt_cache_warm: true,
+      cache_ttl: '1h',
+      estimated_cache_write_usd: usd,
+      estimate_basis: 'catalog',
+    })
+  await swap('claude-opus-5-5', 1.9)
+  await swap('claude-sonnet-5-5', 0.001)
+  expect(toasts).toEqual(['차종 변경: 모범 · 다음 요청에 재캐시 약 ₩2,660 붙어요'])
 })

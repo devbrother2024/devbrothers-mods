@@ -114,6 +114,8 @@ const positive = (value: unknown, fallback: number) =>
 
 const comma = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 
+const man = (n: number) => (n >= 10_000 ? `${comma(n / 10_000)}만` : comma(n))
+
 const pad = (n: number) => String(n).padStart(2, '0')
 
 const bar = (percent: number) => {
@@ -225,6 +227,8 @@ export const register: Register = (on, options) => {
   let longHaulCount = 0
   let peakFiveHour = 0
   let tokens = 0
+  let freshTokens = 0
+  let cachedTokens = 0
   let speed = 0
   const tokensByTier: Record<Tier, number> = { 일반: 0, 모범: 0, 블랙: 0 }
   let ledger: Ledger = { since: '', totalUsd: 0, days: {} }
@@ -393,6 +397,10 @@ export const register: Register = (on, options) => {
 
   on('classic.PostModelSwitch', async ($, e, next) => {
     model = e.to_model
+    const recache = fare(e.estimated_cache_write_usd ?? 0)
+    if (recache >= 10) {
+      $.ui.toast(`차종 변경: ${tierOf(e.to_model) ?? '-'} · 다음 요청에 재캐시 약 ₩${comma(recache)} 붙어요`, { timeoutMs: 8000 })
+    }
     $.ui.invalidate('ui.render')
     return next(e)
   })
@@ -439,6 +447,8 @@ export const register: Register = (on, options) => {
         (usage.cache_read_input_tokens ?? 0) +
         (usage.cache_creation_input_tokens ?? 0)
       tokens += used
+      cachedTokens += usage.cache_read_input_tokens ?? 0
+      freshTokens += used - (usage.cache_read_input_tokens ?? 0)
       tokensByTier[tierOf(usage.model ?? e.model) ?? '일반'] += used
     }
     if (!e.agentId) {
@@ -721,7 +731,7 @@ export const register: Register = (on, options) => {
         }),
         rule,
         row('승하차', plain(`${clockOfMs(startedAt)} → ${clockOfMs(now)} (${duration(now - startedAt)})`)),
-        row('주행', plain(`처리 ${comma(tokens)} 토큰(캐시 읽기 포함) · ${shares()}`)),
+        row('주행', plain(`새로 처리 ${man(freshTokens)} · 캐시 재사용 ${man(cachedTokens)} 토큰 · ${shares()}`)),
         row(
           '요금',
           Text({ bold: true, color: RED, children: [won(sessionUsd)] }),
