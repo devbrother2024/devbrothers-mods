@@ -1,147 +1,231 @@
-# devbrothers-mods
+<div align="center">
 
-개발동생이 만든 Claude Code mods 모음입니다. 첫 번째 묶음은 **택시 팩**이에요.
+# 🚕 devbrothers-mods
 
-| mod | 하는 일 | 명령 |
-| --- | --- | --- |
-| `taxi-meter` | 프롬프트 위에 실제 택시 미터기 모양의 패널을 띄웁니다. 이번 승차(프롬프트) 요금(API 정가 환산 원화), 5시간·주간 한도와 리셋 시각, 차종·할증·복합 키를 보여줍니다. | `/meter`, `/meter reset`, `/meter demo`, `/receipt` |
-| `taxi-navi` | Claude의 할 일 목록을 내비 경로로 그립니다. 계획이 바뀌면 "경로를 재탐색합니다", 다 끝나면 도착 안내를 합니다. | `/navi` |
-| `taxi-speedcam` | 위험한 Bash 명령 앞에서 찰칵 잡고 [가주세요]/[세워주세요]로 묻습니다. | `/speedcam` |
-| `taxi-blackbox` | 도구 호출을 녹화합니다. 오류·거부(사고)가 나면 직전 동작을 돌려볼 수 있어요. | `/blackbox` |
+**클로드 코드를 택시로 개조하는 Claude Code mods**
 
-Claude Code 2.1.289에서 만들고 테스트했습니다.
+요금 미터기, 내비, 과속 단속 카메라, 블랙박스를 프롬프트 위에 달아 드려요.
+
+[![Claude Code](https://img.shields.io/badge/Claude_Code-2.1.287%2B-d97757)](https://code.claude.com/docs/en/plugins/mods/overview)
+[![mods](https://img.shields.io/badge/mods-4-34c759)](#택시-팩)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
+
+<img src="docs/images/hero.webp" alt="force push를 단속 카메라가 세우고, 미터기·내비·블랙박스가 함께 보이는 Claude Code 화면" width="900">
+
+<sub>실제 세션 화면이에요. Claude가 <code>git push --force</code>를 하려는 순간 단속 카메라가 세웠고, 미터기는 지금까지 ₩240, 내비는 경유지 2/3, 블랙박스는 사고 1건을 기록했어요.</sub>
+
+</div>
+
+## 택시 팩
+
+| | mod | 한 줄 요약 | 명령 |
+| :---: | --- | --- | --- |
+| 🧾 | [**taxi-meter**](#-taxi-meter-요금-미터기) | 지금 프롬프트가 API 요금으로 얼마인지, 5시간·주간 한도를 얼마나 썼는지 | `/meter` `/receipt` |
+| 🧭 | [**taxi-navi**](#-taxi-navi-내비) | Claude의 할 일 목록을 경로로 그리고 음성으로 안내 | `/navi` |
+| 📸 | [**taxi-speedcam**](#-taxi-speedcam-과속-단속-카메라) | `rm -rf`, force push 같은 위험한 명령을 실행 전에 세우고 물어보기 | `/speedcam` |
+| 🎥 | [**taxi-blackbox**](#-taxi-blackbox-블랙박스) | 모든 도구 호출을 녹화하고, 오류·거부 직전 장면을 다시 보기 | `/blackbox` |
 
 ## 설치
 
 ```bash
 claude plugin marketplace add devbrother2024/devbrothers-mods
+
 claude plugin install taxi-blackbox@devbrothers-mods
 claude plugin install taxi-speedcam@devbrothers-mods
 claude plugin install taxi-meter@devbrothers-mods
 claude plugin install taxi-navi@devbrothers-mods
 ```
 
-하나만 골라 설치해도 됩니다. 넷 다 쓴다면 블랙박스를 먼저 설치하세요. Claude Code는 설치한 순서대로 mod를 불러오는데, 블랙박스가 단속 카메라보다 앞에 있어야 단속 카메라가 세운 명령까지 기록돼요. 설정은 따로 하지 않아도 기본값으로 동작합니다.
+필요한 것만 골라 설치해도 돼요. 열려 있는 세션에서는 `/reload-plugins`를 치거나 Claude Code를 다시 시작하면 바로 보입니다. `/plugin`에서 `4 mods active · taxi-blackbox, …`가 보이면 성공이에요.
 
-설치 전에 한 세션만 써보고 싶다면 저장소를 받아서 `--plugin-dir`로 띄워보세요.
+> [!TIP]
+> **넷 다 쓴다면 블랙박스를 먼저 설치하세요.** mod는 설치한 순서대로 실행돼요. 블랙박스가 단속 카메라보다 앞에 있어야 카메라가 세운 명령까지 사고로 기록됩니다.
+
+> [!IMPORTANT]
+> **내비는 할 일 도구가 켜져 있어야 해요.** Claude Code v2.1.233부터 Opus 4.8·Sonnet 5·Fable 5 이후 모델은 할 일 도구가 기본으로 꺼져 있어서 Claude가 체크리스트를 만들지 않아요. `CLAUDE_CODE_ENABLE_TODO_TOOLS=1 claude`로 시작하거나 `~/.claude/settings.json`의 `env`에 넣어두세요.
+
+<details>
+<summary>설치하지 않고 한 세션만 써보기</summary>
 
 ```bash
 git clone https://github.com/devbrother2024/devbrothers-mods
 cd devbrothers-mods
-claude --plugin-dir plugins/taxi-blackbox --plugin-dir plugins/taxi-speedcam --plugin-dir plugins/taxi-meter --plugin-dir plugins/taxi-navi
+claude --plugin-dir plugins/taxi-blackbox --plugin-dir plugins/taxi-speedcam \
+       --plugin-dir plugins/taxi-meter --plugin-dir plugins/taxi-navi
 ```
 
-`--plugin-dir` 순서가 실행 순서입니다. 블랙박스를 맨 앞에 두어야 단속 카메라가 세운 명령까지 기록돼요.
+`--plugin-dir` 순서가 실행 순서예요. 여기서도 블랙박스를 맨 앞에 두세요.
 
-## 택시 팩 자세히
+</details>
 
-### taxi-meter
+---
 
-```
-╭────────────────────────────────────────────────────────────────────╮
-│ 클로드·택시+   모범   41.3 tok/s              ELECTRONIC TAXIMETER │
-│ ▄█▄                     ▟▀▀▜▖▟▀▀▜▖  ▟▀▀▜▖█▀▀▀▘▟▀▀▜▖                │
-│ ▀▝█▙      ▖              ▗▄▟▘█  ▐▌    ▗▟▘█▄▄▄ █  ▐▌ 원    61%      │
-│    ▜██████▀                ▐▌█  ▐▌▗▖▗▟▀     ▐▌█  ▐▌ (WON) 컨텍스트 │
-│    █▐▌ █▐▌              ▜▄▄▟▘▜▄▄▟▘▟▘█▄▄▄▖▜▄▄▟▘▜▄▄▟▘                │
-│  주행  5시간 ████████░░ 88% · 20:00 리셋 │ 주간 28%                │
-│   빈차     주행     할증     복합     지불               데모 주행 │
-╰────────────────────────────────────────────────────────────────────╯
-```
+## 🧾 taxi-meter: 요금 미터기
 
-- 요금은 쓴 토큰을 **API 정가로 환산한 금액**입니다. 구독(Pro·Max) 요금제에서 실제로 청구되는 돈이 아니에요.
-- 프롬프트 하나가 승차 한 번입니다. 새 프롬프트를 보내면 0원에서 다시 셉니다(`/clear` 뒤도 같음). 세션 합계는 `/meter`와 `/receipt`에서 볼 수 있어요.
-- 실제 미터기처럼 생긴 패널입니다. 말은 응답 중에 달리고, 위쪽에 차종과 출력 속도(tok/s), 오른쪽에 컨텍스트 사용률이 나와요.
-- 아래 키는 상태에 따라 켜집니다. `빈차` 시작 전, `주행` 응답 중, `할증` Opus·Fable 사용, `복합` 컨텍스트 50% 이상(장거리), `지불` 응답이 끝나 요금이 확정됐거나 한도 소진. 차종은 Sonnet·Haiku `일반`, Opus `모범`, Fable `블랙`입니다.
-- 패널은 터미널 폭 75칸·높이 9줄 이상에서 나오고, 그보다 좁거나 데스크톱 앱이면 한 줄 표시로 바뀝니다.
-- 5시간 한도가 90%를 넘으면 "곧 목적지입니다", 100%면 "하차하셔야 합니다 · 리셋 시각 재승차"로 바뀌고 알림음이 한 번 울립니다. 한도를 다 쓰면 요금 숫자가 빨간색이 돼요.
-- `/meter`는 이번 승차·이번 세션·오늘·최근 7일·누적 요금을 보여주고, `/receipt`는 영수증 창을 엽니다. 누적 장부는 세션을 넘어 90일치를 보관합니다. `/meter reset`은 화면 요금과 누적 장부를 모두 0원으로 만들고, 데모 주행 중이면 데모도 끝내요.
-- `/meter demo`는 촬영·시연용 데모 주행입니다. 실제 사용량과 상관없는 연출 숫자로 약 10초 동안 승차부터 하차까지 보여주고, 미터기에 "데모 주행"이라고 표시돼요. 한 번 더 입력하거나 다음 프롬프트를 보내면 실제 미터기로 돌아옵니다.
+<img src="docs/images/meter.webp" alt="택시 미터기 패널. 요금 ₩200, 컨텍스트 5%, 5시간 한도 3%" width="560">
+
+프롬프트 하나가 승차 한 번이에요. Claude가 일하는 동안 말이 달리고 요금이 딸깍딸깍 올라가요.
+
+- **요금**은 쓴 토큰을 API 정가로 환산한 원화예요. 구독(Pro·Max) 요금제에서 실제로 청구되는 돈은 아니고, "내 구독이 API로 치면 얼마어치 일하나"를 보여줘요.
+- **위쪽**에는 차종(모델)과 출력 속도(tok/s), **오른쪽**에는 컨텍스트 사용률, **아래 줄**에는 5시간 한도와 리셋 시각, 주간 한도가 나와요.
+- 새 프롬프트를 보내면 ₩0에서 다시 세요(`/clear` 뒤도 같아요). 세션 합계는 `/meter`와 `/receipt`에 남아요.
+
+| 키 | 켜지는 때 |
+| --- | --- |
+| `빈차` | 첫 응답 전 |
+| `주행` | Claude가 응답하는 중 |
+| `할증` | 비싼 차종을 타는 중. Opus는 `모범`, Fable은 `블랙` (Sonnet·Haiku는 `일반`) |
+| `복합` | 컨텍스트 50% 이상, 즉 장거리 |
+| `지불` | 응답이 끝나 이번 요금이 확정됐거나 한도를 다 쓴 때 |
+
+<img src="docs/images/meter-demo.webp" alt="데모 주행 끝 화면. 5시간 한도를 다 써서 빨간 숫자와 하차 안내" width="560">
+
+5시간 한도가 90%를 넘으면 "곧 목적지입니다", 100%면 "하차하셔야 합니다 · 리셋 시각 재승차"가 뜨고 숫자가 빨간색이 돼요. 위 화면은 `/meter demo` 데모 주행이에요(연출 숫자라서 미터기에 "데모 주행"이 찍혀요).
+
+<img src="docs/images/receipt.webp" alt="/receipt 영수증 창. 승하차 시각, 주행 토큰, 요금, 누적" width="900">
+
+<details>
+<summary>명령과 설정</summary>
+
+| 명령 | 하는 일 |
+| --- | --- |
+| `/meter` | 이번 승차·이번 세션·오늘·최근 7일·누적 요금 |
+| `/receipt` | 영수증 창(승하차 시각, 주행 토큰, 차종 비중, 요금, 누적) |
+| `/meter reset` | 화면 요금과 누적 장부를 모두 0원으로 (데모 중이면 데모도 끝내요) |
+| `/meter demo` | 약 10초짜리 데모 주행. 다시 입력하거나 다음 프롬프트를 보내면 실제 미터기로 돌아와요 |
 
 | 설정 | 기본값 | 설명 |
 | --- | --- | --- |
-| `krw_per_usd` | 1400 | 원화 환산 환율 |
+| `krw_per_usd` | `1400` | 원화 환산 환율 |
 | `style` | `led` | `led`는 터미널에서 미터기 패널, `compact`는 한 줄 |
 | `sound` | `true` | 요금이 오를 때 딸깍, 한도 경고 알림음 |
-| `tick_won` | 1000 | 딸깍 소리를 내는 금액 단위 |
+| `tick_won` | `1000` | 딸깍 소리를 내는 금액 단위 |
 
-### taxi-navi
+누적 장부는 세션을 넘어 90일치를 보관해요. 패널은 창 폭 75칸·높이 9줄 이상에서 나오고, 더 좁으면 한 줄로 바뀌어요.
 
-```
- ▲    다음 안내 문서 정리                              경유지 2/5
- ██   ●━━━━━━━●━━━━━━━🚕───────○───────○───────◎
-      지금 테스트 작성 중                                  경과 3분
-```
+</details>
 
-- 터미널에서 창이 75칸 이상이면 내비 화면(방향 화살표, 경로, 경과 시간)으로, 좁거나 Desktop이면 한 줄로 나옵니다. 경로를 재탐색하면 화살표가 5초 동안 유턴으로 바뀌고, 도착하면 체크 깃발이 뜹니다.
+---
 
-- Claude Code v2.1.233부터 Opus 4.8·Sonnet 5·Fable 5 이후 모델은 할 일 도구가 기본으로 꺼져 있습니다. 이 모델들에서는 Claude가 할 일 목록을 만들지 않아서 내비에 그릴 경로가 없어요. `CLAUDE_CODE_ENABLE_TODO_TOOLS=1 claude`로 시작하세요. 켜져 있는지는 `/navi`가 알려줍니다.
-- `TaskCreate`·`TaskUpdate`·`TaskList`와 `TodoWrite`를 읽기만 합니다. 할 일 내용은 바꾸지 않아요.
-- 첫 작업이 시작될 때 "경로 안내를 시작합니다", 진행 중에 할 일이 늘거나 줄면 "경로를 재탐색합니다", 모두 끝나면 "목적지에 도착했습니다"라고 말합니다.
-- 서브에이전트의 할 일은 경로에 넣지 않습니다.
+## 🧭 taxi-navi: 내비
+
+<img src="docs/images/navi.webp" alt="내비 패널. 위는 주행 중(경유지 1/3, 다음 안내), 아래는 도착(경유지 3곳, 소요 1분)" width="560">
+
+Claude가 세운 할 일 목록이 경로가 되고, 🚕가 지금 하는 단계에 있어요.
+
+- 첫 작업이 시작되면 "경로 안내를 시작합니다", 진행 중에 단계가 늘거나 줄면 **"경로를 재탐색합니다"**(화살표가 5초 동안 유턴으로 바뀌어요), 다 끝나면 "목적지에 도착했습니다"라고 말해요.
+- 단계 하나를 끝낼 때마다 딩 소리가 나요. 긴 작업을 맡기고 자리를 비워도 돼요.
+- `TaskCreate`·`TaskUpdate`·`TaskList`·`TodoWrite`를 읽기만 하고, 할 일 내용은 바꾸지 않아요. 서브에이전트의 할 일은 경로에 넣지 않아요.
+- `/navi`를 치면 할 일 도구가 켜져 있는지 알려줘요.
+
+<details>
+<summary>설정</summary>
 
 | 설정 | 기본값 | 설명 |
 | --- | --- | --- |
 | `voice` | `true` | 음성 안내 |
 | `voice_name` | `Yuna` | macOS `say -v '?'`에 나오는 음성 이름 |
-| `sound` | `true` | 할 일 하나를 끝낼 때마다 딩 |
+| `sound` | `true` | 단계를 끝낼 때마다 딩 |
 
-### taxi-speedcam
+</details>
+
+---
+
+## 📸 taxi-speedcam: 과속 단속 카메라
+
+<img src="docs/images/speedcam.webp" alt="force push 앞에서 뜬 질문 창(가주세요/세워주세요)과 세운 뒤의 단속 카메라 패널" width="760">
+
+위험한 Bash 명령을 실행 직전에 "찰칵" 잡아요. 무엇이 바뀌는지 보여주고 **[가주세요] / [세워주세요]**로 물어봐요.
 
 | 단속 | 잡는 명령 예시 |
 | --- | --- |
-| 역주행 감지 | `git push --force`, `git push -f`, `git push origin +main` |
-| 낭떠러지 주의 | `rm -rf`, `rm -r -f`, `rm --recursive --force` |
-| 어린이 보호구역 | `DROP TABLE`, `TRUNCATE`, WHERE 없는 `DELETE FROM`, `prisma migrate reset` |
-| 후진 주의 | `git reset --hard`, `git clean -f`, `git checkout -- .`, `git stash drop` |
-| 고속도로 진입 | `--prod`, `wrangler deploy`, `terraform apply`, `npm publish` |
+| 🔄 역주행 감지 | `git push --force`, `git push -f`, `git push origin +main` |
+| 🪨 낭떠러지 주의 | `rm -rf`, `rm -r -f`, `rm --recursive --force` |
+| 🏫 어린이 보호구역 | `DROP TABLE`, `TRUNCATE`, WHERE 없는 `DELETE FROM`, `prisma migrate reset` |
+| ⏪ 후진 주의 | `git reset --hard`, `git clean -f`, `git checkout -- .`, `git stash drop` |
+| 🛣️ 고속도로 진입 | `--prod`, `wrangler deploy`, `terraform apply`, `npm publish` |
 
-- 잡으면 노란 경고 줄무늬 사이에 단속 카메라 표지판이 뜨고, 찰칵 순간 화면이 하얗게 번쩍입니다. 결과(통과했어요·정차했어요)가 5초 동안 남아요. 창이 75칸보다 좁으면 한 줄로 나옵니다.
-- [가주세요]를 고르면 평소처럼 권한 확인을 거쳐 실행되고, [세워주세요]를 고르면 실행하지 않고 Claude에게 이유를 알려줍니다.
-- 질문을 닫거나 `claude -p`처럼 물어볼 사람이 없으면 세웁니다.
-- 패턴으로 잡는 안전벨트입니다. 보안 경계가 아니니 권한 설정(deny 규칙)을 대신하지 않아요.
+- [가주세요]는 평소처럼 권한 확인을 거쳐 실행하고, [세워주세요]는 실행하지 않고 Claude에게 이유를 전해요. Claude는 같은 명령을 다시 시도하지 않고 다른 방법을 물어봐요.
+- 질문 창을 닫거나 `claude -p`처럼 물어볼 사람이 없으면 세워요.
+- 잡는 순간 화면이 하얗게 번쩍이고, 결과(통과했어요·정차했어요)가 5초 동안 남아요.
+
+> [!WARNING]
+> 텍스트 패턴으로 잡는 안전벨트예요. alias나 스크립트 속 명령은 못 잡으니, 권한 설정의 `deny` 규칙을 대신하지 않아요.
+
+<details>
+<summary>설정</summary>
 
 | 설정 | 기본값 | 설명 |
 | --- | --- | --- |
-| `mode` | `ask` | `ask`는 매번 묻고, `block`은 묻지 않고 세웁니다 |
+| `mode` | `ask` | `ask`는 매번 묻고, `block`은 묻지 않고 세워요 |
 | `sound` | `true` | 찰칵 셔터 소리 |
 | `voice` | `true` | 단속 종류 음성 안내 |
 | `voice_name` | `Yuna` | macOS 음성 이름 |
 
-### taxi-blackbox
+</details>
 
-```
- ● REC   2026.10.04 15:00:02   12:34 · 기록 128  사고 2  /blackbox
-```
+---
 
-- 주행 중에는 `● REC`이 깜빡이고 실제 블랙박스처럼 날짜·시각이 찍힙니다.
-- `/blackbox` 창은 타임라인(사고는 빨강, 고른 사고는 노랑 ▲), 직전 동작 목록, 빨간 테두리의 사고 장면 카드로 구성돼요. 도구마다 색 배지가 붙습니다(Bash 주황, Edit·Write 파랑, Read·검색 회색, 웹 청록).
+## 🎥 taxi-blackbox: 블랙박스
 
-- 모든 도구 호출의 시각, 도구, 대상(명령·파일·URL)과 결과(정상·오류·거부)를 이번 세션 동안 최대 500개 기억합니다.
-- `/blackbox`는 사고 직전 동작을 보여주는 창을 엽니다. `p`·`n`으로 이전·다음 사고를 넘겨보세요.
-- `token=`, `password=`, `Bearer`, `sk-`, `ghp_`, `xoxb-`, `AKIA` 형태의 값은 `•••`로 가려서 기록합니다. 기록은 메모리에만 두고 파일로 저장하지 않습니다.
+<img src="docs/images/blackbox.webp" alt="/blackbox 창. 타임라인, 직전 5개 동작, 빨간 사고 장면 카드, 아래 REC 줄" width="900">
+
+맨 아래 `● REC` 줄이 날짜·시각과 함께 계속 녹화해요(응답 중에는 깜빡여요). 오류나 거부가 생기면 `사고 N`이 노랗게 켜져요.
+
+- `/blackbox`를 치면 **사고 장면**이 열려요. 타임라인(사고는 빨강, 고른 사고는 노랑 ▲), 직전 동작 목록, 사고 카드가 보여요. `p`·`n`으로 이전·다음 사고를 넘겨요.
+- 도구마다 색 배지가 붙어요. Bash 주황, Edit·Write 파랑, Read·검색 회색, 웹 청록이에요.
+- 이번 세션의 도구 호출을 최대 500개 메모리에만 기억하고 파일로 남기지 않아요. `token=`, `password=`, `Bearer`, `sk-`, `ghp_`, `xoxb-`, `AKIA` 형태의 값은 `•••`로 가려요.
+
+<details>
+<summary>설정</summary>
 
 | 설정 | 기본값 | 설명 |
 | --- | --- | --- |
-| `before` | 5 | 사고 하나와 함께 보여줄 직전 동작 수 |
+| `before` | `5` | 사고 하나와 함께 보여줄 직전 동작 수 |
+
+</details>
+
+---
+
+## 어디서 보이나요
+
+mod의 훅은 Claude Code가 도는 모든 곳에서 실행되지만, 화면은 터미널과 Desktop 앱 Code 탭에만 그려져요.
+
+| 실행 환경 | 택시 팩 화면 |
+| --- | --- |
+| 터미널 `claude` (VS Code·JetBrains 내장 터미널 포함) | 패널 그대로 |
+| Claude Desktop 앱 Code 탭 (로컬 세션) | 한 줄 표시. Desktop에는 LED 그림(`Raster`)이 없어서 미터기·내비·단속 카메라가 텍스트로 바뀌어요 |
+| VS Code 확장 채팅, `claude -p`, Agent SDK | 화면 없음. 단속 카메라는 물어볼 사람이 없어서 위험 명령을 세워요 |
+
+Desktop 앱 Code 탭의 로컬 세션은 터미널과 같은 `~/.claude` 설정을 써서, 위 설치 명령으로 깐 mod가 그대로 로드돼요. 소리와 음성은 macOS에서만 나요.
 
 ## 알아두면 좋은 점
 
-- mods는 샌드박스 없이 Claude Code 안에서 실행됩니다. 어떤 mod든 설치 전에 코드를 읽어보세요. 이 팩은 `$.fs`, `$.process`, `$.http`를 쓰지 않습니다. `claude plugin validate plugins/<이름>`의 `calls:` 줄로 직접 확인할 수 있어요.
-- 소리와 음성은 macOS에서만 납니다. Linux와 Windows에서는 화면 표시만 동작해요.
-- 설정은 `/config`에서 바꿀 수 있습니다.
-- 네 개를 모두 켜면 프롬프트 위 영역에 최대 18줄 정도가 필요해요. 전체화면 모드에서는 이 영역이 터미널 높이의 절반까지라, 창이 낮으면 아래쪽이 `n more`로 접히고 스크롤됩니다. 촬영할 때는 창을 50줄 이상으로 키우세요.
+> [!CAUTION]
+> mod는 샌드박스 없이 내 권한으로 Claude Code 안에서 실행돼요. 어떤 mod든 설치 전에 코드를 읽어보세요. 이 팩은 `$.fs`, `$.process`, `$.http`를 쓰지 않아요. `claude plugin validate plugins/<이름>`의 `calls:` 줄로 직접 확인할 수 있어요.
 
-## 개발
+- 설정은 `/config`에서 바꿔요.
+- 넷을 다 켜면 프롬프트 위에 최대 18줄 정도가 필요해요. 전체화면 모드에서는 이 영역이 터미널 높이의 절반까지라, 창이 낮으면 아래쪽이 `n more`로 접히고 스크롤돼요. 창을 50줄 이상으로 키우면 다 보여요.
+- Claude Code 2.1.289에서 만들고 테스트했어요. mods API는 릴리스 사이에 바뀔 수 있어요.
 
-```bash
-claude plugin validate plugins/taxi-meter
-claude plugin test plugins/taxi-meter
-python3 scripts/make-sounds.py
+## 내 mod 만들기
+
+이 팩도 Claude Code에게 말로 시켜서 만들고 다듬었어요. Claude Code 세션에서 원하는 걸 말하면 내장 `plugin-authoring` 스킬이 mod를 써줘요.
+
+```text
+프롬프트 위에 현재 git 브랜치를 보여주는 mod 만들어줘
 ```
 
-효과음은 `scripts/make-sounds.py`가 직접 합성한 파일이라 외부 음원 라이선스가 없습니다.
+직접 짜보려면 [공식 튜토리얼](https://code.claude.com/docs/en/plugins/mods/create)과 [화면 그리기 문서](https://code.claude.com/docs/en/plugins/mods/interface)에서 시작하세요. 이 저장소의 `plugins/*/hooks/register.ts`와 `tests/`도 예제로 쓸 수 있어요.
+
+```bash
+claude plugin validate plugins/taxi-meter   # 잡는 이벤트·호출 목록, 정적 검사
+claude plugin test plugins/taxi-meter       # 세션·로그인 없이 테스트
+python3 scripts/make-sounds.py              # 효과음 다시 합성
+```
+
+효과음은 `scripts/make-sounds.py`가 직접 합성한 파일이라 외부 음원 라이선스가 없어요.
 
 ## 라이선스
 
-MIT. 자세한 내용은 [LICENSE](LICENSE)를 보세요.
+[MIT](LICENSE) · 만든 사람 [개발동생](https://www.youtube.com/@%EA%B0%9C%EB%B0%9C%EB%8F%99%EC%83%9D)
