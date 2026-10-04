@@ -1,4 +1,4 @@
-import type { Register } from 'claude-code'
+import type { Register, SessionMeasureInput } from 'claude-code'
 
 type Tier = '일반' | '모범' | '블랙'
 type Limit = { kind: string; percentUsed: number; resetsAt?: string }
@@ -415,13 +415,23 @@ export const register: Register = (on, options) => {
       tokens += used
       tokensByTier[tierOf(usage.model ?? e.model) ?? '일반'] += used
     }
+    if (!e.agentId) {
+      const { delta, isTick, isChime } = absorb(await $.session.usage())
+      if (delta > 0) {
+        const saved = await $.store.get(LEDGER)
+        ledger = credit(isLedger(saved) ? saved : ledger, await $.clock.now(), delta)
+        await $.store.set(LEDGER, ledger)
+      }
+      if (isTick && sound) $.audio.play({ asset: TICK }).catch(() => {})
+      if (isChime && sound) $.audio.play({ asset: CHIME }).catch(() => {})
+      $.ui.invalidate('ui.render')
+    }
     return result
   })
 
-  on('session.measure', async ($, e, next) => {
-    const result = await next(e)
-    limits = [...e.rateLimits]
-    contextPercent = e.context.percent ?? contextPercent
+  const absorb = (m: Pick<SessionMeasureInput, 'context' | 'rateLimits' | 'cost'>) => {
+    limits = [...m.rateLimits]
+    contextPercent = m.context.percent ?? contextPercent
     const isLong = (contextPercent ?? 0) >= LONG_HAUL_PERCENT
     if (isLong && !longHaul) longHaulCount += 1
     longHaul = isLong
@@ -429,26 +439,31 @@ export const register: Register = (on, options) => {
     const five = limitOf('five_hour')
     if (five) peakFiveHour = Math.max(peakFiveHour, five.percentUsed)
 
-    const costUsd = e.cost?.usd
+    const costUsd = m.cost?.usd
     const delta = costUsd === undefined ? 0 : costUsd >= lastCostUsd ? costUsd - lastCostUsd : costUsd
     if (costUsd !== undefined) lastCostUsd = costUsd
+    rideUsd += delta
+    sessionUsd += delta
+    const step = Math.floor(fare(rideUsd) / tickWon)
+    const isTick = step > ticks
+    if (isTick) ticks = step
+
+    const level = !five ? 0 : five.percentUsed >= 100 ? 100 : five.percentUsed >= 90 ? 90 : 0
+    const isChime = level > warned
+    warned = level
+    return { delta, isTick, isChime }
+  }
+
+  on('session.measure', async ($, e, next) => {
+    const result = await next(e)
+    const { delta, isTick, isChime } = absorb(e)
     if (delta > 0) {
-      rideUsd += delta
-      sessionUsd += delta
       const saved = await $.store.get(LEDGER)
       ledger = credit(isLedger(saved) ? saved : ledger, await $.clock.now(), delta)
       await $.store.set(LEDGER, ledger)
-      const step = Math.floor(fare(rideUsd) / tickWon)
-      if (step > ticks) {
-        ticks = step
-        if (sound) $.audio.play({ asset: TICK }).catch(() => {})
-      }
     }
-
-    const level = !five ? 0 : five.percentUsed >= 100 ? 100 : five.percentUsed >= 90 ? 90 : 0
-    if (level > warned && sound) $.audio.play({ asset: CHIME }).catch(() => {})
-    warned = level
-
+    if (isTick && sound) $.audio.play({ asset: TICK }).catch(() => {})
+    if (isChime && sound) $.audio.play({ asset: CHIME }).catch(() => {})
     $.ui.invalidate('ui.render')
     return result
   })

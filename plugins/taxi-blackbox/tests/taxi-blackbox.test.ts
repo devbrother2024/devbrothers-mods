@@ -59,6 +59,14 @@ test('session.start에서 /blackbox를 등록하고 REC 띠를 그린다', OPTIO
   expect(await ui.find({ type: 'Text', text: 'drawn by Claude Code' })).toBeDefined()
 })
 
+test('Claude가 쉬는 동안에도 시계는 계속 간다', OPTIONS, async ($, on) => {
+  const { clock } = await record($, on)
+  const ui = await $.ui.mount(band)
+  await clock.advance(3_000)
+  expect(await ui.find({ type: 'Text', text: ' 2026.10.04 15:00:03 ' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '00:03 · 기록 0' })).toBeDefined()
+})
+
 test('결과를 바꾸지 않고 그대로 돌려준다', OPTIONS, async ($, on) => {
   const { bash } = await record($, on)
   expect(await bash('ls')).toEqual({ result: 'ok' })

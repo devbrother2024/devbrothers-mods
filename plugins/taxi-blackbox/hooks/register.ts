@@ -115,7 +115,8 @@ export const register: Register = (on, options) => {
   let dropped = 0
   let startedAt = 0
   let blink = true
-  let blinkTimer: { cancel: () => void } | undefined
+  let isDriving = false
+  let clock: { cancel: () => void } | undefined
   let selected: number | undefined
 
   const incidents = () => frames.flatMap((frame, i) => (frame.outcome === 'ok' ? [] : [i]))
@@ -124,28 +125,28 @@ export const register: Register = (on, options) => {
     const result = await next(e)
     await $.command.register({ name: 'blackbox', description: '블랙박스: 사고(오류·거부) 직전 동작 돌려보기', immediate: true })
     startedAt = await $.clock.now()
+    clock?.cancel()
+    clock = $.clock.every(1000, () => {
+      blink = isDriving ? !blink : true
+      $.ui.invalidate('ui.render')
+    })
     return result
   })
 
   on('session.end', async ($, e, next) => {
-    blinkTimer?.cancel()
+    clock?.cancel()
     return next(e)
   })
 
   on('turn.start', async ($, e, next) => {
-    blinkTimer?.cancel()
-    blinkTimer = $.clock.every(1000, () => {
-      blink = !blink
-      $.ui.invalidate('ui.render')
-    })
+    isDriving = true
     return next(e)
   })
 
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
     if (!(e as { agentId?: string }).agentId) {
-      blinkTimer?.cancel()
-      blinkTimer = undefined
+      isDriving = false
       blink = true
       $.ui.invalidate('ui.render')
     }

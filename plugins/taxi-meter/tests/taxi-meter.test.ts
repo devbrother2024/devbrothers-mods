@@ -29,6 +29,7 @@ const receiptPane = {
 const ride = async ($: Engine, on: On, { cost = 0, limits = [] as Limit[], ledger = undefined as unknown } = {}) => {
   const commands: string[] = []
   const sounds: string[] = []
+  let usd = cost
   const saved = new Map<string, unknown>(ledger ? [['ledger', ledger]] : [])
   const clock = mock.clock(on, { now: START })
   on('store.get', ($, e) => ({ value: saved.get(e.key) }))
@@ -41,7 +42,7 @@ const ride = async ($: Engine, on: On, { cost = 0, limits = [] as Limit[], ledge
     return { value: undefined }
   })
   on('session.usage', () => ({
-    value: { startedAt: START, context: { tokens: 1000, window: 200_000, percent: 0.5 }, rateLimits: limits, cost: { usd: cost } },
+    value: { startedAt: START, context: { tokens: 1000, window: 200_000, percent: 0.5 }, rateLimits: limits, cost: { usd } },
   }))
   on('audio.play', ($, e) => {
     sounds.push(e.clip.asset ?? '')
@@ -76,7 +77,11 @@ const ride = async ($: Engine, on: On, { cost = 0, limits = [] as Limit[], ledge
 
   const prompt = (text: string) => $.turn.start({ text, turnId: `t-${text}` })
 
-  return { commands, sounds, saved, clock, measure, step, prompt }
+  const spend = (value: number) => {
+    usd = value
+  }
+
+  return { commands, sounds, saved, clock, measure, step, prompt, spend }
 }
 
 test('session.start에서 /meter와 /receipt를 등록한다', COMPACT, async ($, on) => {
@@ -173,6 +178,22 @@ test('새 프롬프트마다 0원에서 새로 승차하고 세션 합계는 이
   const report = await $.command.run({ command: 'meter', args: '' })
   expect(report.text).toContain('이번 승차 ₩1,400')
   expect(report.text).toContain('이번 세션 ₩4,200')
+})
+
+test('턴이 끝나기 전에도 단계마다 요금을 올린다', COMPACT, async ($, on) => {
+  const { step, prompt, spend, sounds } = await ride($, on, { cost: 1 })
+  await prompt('긴 작업')
+  spend(1.5)
+  await step('claude-sonnet-5-5')
+  let ui = await $.ui.mount(band('terminal', true))
+  expect(await ui.find({ type: 'Text', text: '₩700' })).toBeDefined()
+  await ui.unmount()
+
+  spend(2)
+  await step('claude-sonnet-5-5')
+  ui = await $.ui.mount(band('terminal', true))
+  expect(await ui.find({ type: 'Text', text: '₩1,400' })).toBeDefined()
+  expect(sounds).toEqual(['sounds/tick.wav'])
 })
 
 test('/clear처럼 엔진 비용이 줄면 그 값을 새 기준으로 삼아 계속 센다', COMPACT, async ($, on) => {
