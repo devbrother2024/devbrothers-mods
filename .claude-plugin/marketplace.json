@@ -1,0 +1,27 @@
+{
+  "name": "devbrothers-mods",
+  "description": "개발동생의 Claude Code mods 모음. 택시 팩: 미터기, 내비, 과속 단속 카메라, 블랙박스",
+  "owner": { "name": "개발동생 (devbrothers)" },
+  "plugins": [
+    {
+      "name": "taxi-meter",
+      "source": "./plugins/taxi-meter",
+      "description": "프롬프트 위 택시 미터기: 세션 요금(API 정가 환산), 5시간·주간 한도와 리셋 시각, /meter·/receipt"
+    },
+    {
+      "name": "taxi-navi",
+      "source": "./plugins/taxi-navi",
+      "description": "할 일 목록을 내비게이션처럼: 진행 경로와 다음 안내, 계획이 바뀌면 경로 재탐색 음성"
+    },
+    {
+      "name": "taxi-speedcam",
+      "source": "./plugins/taxi-speedcam",
+      "description": "위험한 Bash 명령 앞의 과속 단속 카메라: force push·rm -rf·DB 삭제·변경 폐기·운영 배포를 묻고 세웁니다"
+    },
+    {
+      "name": "taxi-blackbox",
+      "source": "./plugins/taxi-blackbox",
+      "description": "도구 호출 블랙박스: 오류·거부 직전 동작을 /blackbox에서 돌려보기, 비밀값은 가려서 기록"
+    }
+  ]
+}

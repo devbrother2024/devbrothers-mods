@@ -1,0 +1,27 @@
+{
+  "name": "taxi-navi",
+  "version": "0.1.0",
+  "description": "Claude의 할 일 목록을 내비게이션처럼: 진행 경로·다음 안내 표시, 계획이 바뀌면 '경로를 재탐색합니다', 끝나면 도착 안내",
+  "author": { "name": "개발동생 (devbrothers)" },
+  "keywords": ["mods", "tasks", "todo", "voice", "korean"],
+  "userConfig": {
+    "voice": {
+      "type": "boolean",
+      "title": "음성 안내",
+      "description": "안내 시작·경로 재탐색·도착을 음성으로 알립니다 (macOS say)",
+      "default": true
+    },
+    "voice_name": {
+      "type": "string",
+      "title": "음성 이름",
+      "description": "macOS say -v 목록에 있는 음성 이름 (한국어 기본: Yuna)",
+      "default": "Yuna"
+    },
+    "sound": {
+      "type": "boolean",
+      "title": "경유지 알림음",
+      "description": "할 일 하나를 끝낼 때마다 딩 소리를 냅니다 (macOS)",
+      "default": true
+    }
+  }
+}

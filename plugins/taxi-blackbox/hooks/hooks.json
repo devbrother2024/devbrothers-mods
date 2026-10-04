@@ -1,0 +1,4 @@
+{
+  "description": "taxi-blackbox hooks module",
+  "modules": ["./register.ts"]
+}

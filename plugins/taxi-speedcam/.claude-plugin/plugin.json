@@ -1,0 +1,34 @@
+{
+  "name": "taxi-speedcam",
+  "version": "0.1.0",
+  "description": "위험한 Bash 명령 앞의 과속 단속 카메라: force push·rm -rf·DB 삭제·변경 폐기·운영 배포를 찰칵 잡아 [가주세요]/[세워주세요]로 묻습니다",
+  "author": { "name": "개발동생 (devbrothers)" },
+  "keywords": ["mods", "safety", "bash", "guard", "korean"],
+  "userConfig": {
+    "mode": {
+      "type": "string",
+      "title": "단속 방식",
+      "description": "ask는 매번 물어보고, block은 묻지 않고 항상 세웁니다",
+      "options": ["ask", "block"],
+      "default": "ask"
+    },
+    "sound": {
+      "type": "boolean",
+      "title": "셔터 소리",
+      "description": "단속할 때 찰칵 소리를 냅니다 (macOS)",
+      "default": true
+    },
+    "voice": {
+      "type": "boolean",
+      "title": "음성 안내",
+      "description": "단속 종류를 음성으로 알립니다 (macOS say)",
+      "default": true
+    },
+    "voice_name": {
+      "type": "string",
+      "title": "음성 이름",
+      "description": "macOS say -v 목록에 있는 음성 이름 (한국어 기본: Yuna)",
+      "default": "Yuna"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "taxi-blackbox",
+  "version": "0.1.0",
+  "description": "Claude의 도구 호출을 블랙박스처럼 녹화: 오류·거부(사고) 직전 동작을 /blackbox에서 돌려보기, 토큰·비밀번호는 가려서 기록",
+  "author": { "name": "개발동생 (devbrothers)" },
+  "keywords": ["mods", "audit", "debugging", "tool-calls", "korean"],
+  "userConfig": {
+    "before": {
+      "type": "number",
+      "title": "사고 직전 동작 수",
+      "description": "사고 하나를 볼 때 함께 보여줄 직전 도구 호출 수",
+      "default": 5,
+      "min": 1,
+      "max": 20
+    }
+  }
+}

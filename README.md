@@ -1,0 +1,122 @@
+# devbrothers-mods
+
+개발동생이 만든 Claude Code mods 모음입니다. 첫 번째 묶음은 **택시 팩**이에요.
+
+| mod | 하는 일 | 명령 |
+| --- | --- | --- |
+| `taxi-meter` | 프롬프트 위에 택시 미터기를 띄웁니다. 이번 세션 요금(API 정가 환산 원화), 5시간·주간 한도와 리셋 시각, 모델 차종 표시등을 보여줍니다. | `/meter`, `/meter reset`, `/receipt` |
+| `taxi-navi` | Claude의 할 일 목록을 내비 경로로 그립니다. 계획이 바뀌면 "경로를 재탐색합니다", 다 끝나면 도착 안내를 합니다. | `/navi` |
+| `taxi-speedcam` | 위험한 Bash 명령 앞에서 찰칵 잡고 [가주세요]/[세워주세요]로 묻습니다. | `/speedcam` |
+| `taxi-blackbox` | 도구 호출을 녹화합니다. 오류·거부(사고)가 나면 직전 동작을 돌려볼 수 있어요. | `/blackbox` |
+
+Claude Code 2.1.289에서 만들고 테스트했습니다.
+
+## 설치
+
+```bash
+claude plugin marketplace add devbrother2024/devbrothers-mods
+claude plugin install taxi-meter@devbrothers-mods
+```
+
+나머지도 같은 방식으로 `taxi-navi`, `taxi-speedcam`, `taxi-blackbox`을 설치하면 됩니다.
+
+설치 전에 한 세션만 써보고 싶다면 저장소를 받아서 `--plugin-dir`로 띄워보세요.
+
+```bash
+git clone https://github.com/devbrother2024/devbrothers-mods
+cd devbrothers-mods
+claude --plugin-dir plugins/taxi-blackbox --plugin-dir plugins/taxi-speedcam --plugin-dir plugins/taxi-meter --plugin-dir plugins/taxi-navi
+```
+
+`--plugin-dir` 순서가 실행 순서입니다. 블랙박스를 맨 앞에 두어야 단속 카메라가 세운 명령까지 기록돼요.
+
+## 택시 팩 자세히
+
+### taxi-meter
+
+```
+ █▀█   원 · API 정가 환산 [주행] [모범] [장거리]
+ █ █   ·····🐎····
+ ▀▀▀   5시간 72% · 19:00 리셋 │ 주간 31%
+```
+
+- 요금은 이번 세션에서 쓴 토큰을 **API 정가로 환산한 금액**입니다. 구독(Pro·Max) 요금제에서 실제로 청구되는 돈이 아니에요.
+- 표시등: `[빈차]` 시작 전, `[주행]` 응답 중, `[대기]` 응답 끝, `[하차]` 5시간 한도 소진. 차종은 Sonnet·Haiku `[일반]`, Opus `[모범]`, Fable `[블랙]`입니다. 컨텍스트가 50%를 넘으면 `[장거리]`가 켜져요.
+- 5시간 한도가 90%를 넘으면 "곧 목적지입니다", 100%면 "하차하셔야 합니다 · 리셋 시각 재승차"로 바뀌고 알림음이 한 번 울립니다.
+- `/meter`는 이번 승차·오늘·최근 7일·누적 요금을 보여주고, `/receipt`는 영수증 창을 엽니다. 누적 장부는 세션을 넘어 90일치를 보관합니다.
+
+| 설정 | 기본값 | 설명 |
+| --- | --- | --- |
+| `krw_per_usd` | 1400 | 원화 환산 환율 |
+| `style` | `led` | `led`는 터미널에서 LED 숫자 3줄, `compact`는 한 줄 |
+| `sound` | `true` | 요금이 오를 때 딸깍, 한도 경고 알림음 |
+| `tick_won` | 1000 | 딸깍 소리를 내는 금액 단위 |
+
+### taxi-navi
+
+```
+🧭 ●━━●━━◉──○──○  2/5
+지금 테스트 작성 중 · 다음 안내 문서 정리
+```
+
+- Claude Code v2.1.233부터 Opus 4.8·Sonnet 5·Fable 5 이후 모델은 할 일 도구가 기본으로 꺼져 있습니다. 이 모델들에서는 Claude가 할 일 목록을 만들지 않아서 내비에 그릴 경로가 없어요. `CLAUDE_CODE_ENABLE_TODO_TOOLS=1 claude`로 시작하세요. 켜져 있는지는 `/navi`가 알려줍니다.
+- `TaskCreate`·`TaskUpdate`·`TaskList`와 `TodoWrite`를 읽기만 합니다. 할 일 내용은 바꾸지 않아요.
+- 첫 작업이 시작될 때 "경로 안내를 시작합니다", 진행 중에 할 일이 늘거나 줄면 "경로를 재탐색합니다", 모두 끝나면 "목적지에 도착했습니다"라고 말합니다.
+- 서브에이전트의 할 일은 경로에 넣지 않습니다.
+
+| 설정 | 기본값 | 설명 |
+| --- | --- | --- |
+| `voice` | `true` | 음성 안내 |
+| `voice_name` | `Yuna` | macOS `say -v '?'`에 나오는 음성 이름 |
+| `sound` | `true` | 할 일 하나를 끝낼 때마다 딩 |
+
+### taxi-speedcam
+
+| 단속 | 잡는 명령 예시 |
+| --- | --- |
+| 역주행 감지 | `git push --force`, `git push -f`, `git push origin +main` |
+| 낭떠러지 주의 | `rm -rf`, `rm -r -f`, `rm --recursive --force` |
+| 어린이 보호구역 | `DROP TABLE`, `TRUNCATE`, WHERE 없는 `DELETE FROM`, `prisma migrate reset` |
+| 후진 주의 | `git reset --hard`, `git clean -f`, `git checkout -- .`, `git stash drop` |
+| 고속도로 진입 | `--prod`, `wrangler deploy`, `terraform apply`, `npm publish` |
+
+- [가주세요]를 고르면 평소처럼 권한 확인을 거쳐 실행되고, [세워주세요]를 고르면 실행하지 않고 Claude에게 이유를 알려줍니다.
+- 질문을 닫거나 `claude -p`처럼 물어볼 사람이 없으면 세웁니다.
+- 패턴으로 잡는 안전벨트입니다. 보안 경계가 아니니 권한 설정(deny 규칙)을 대신하지 않아요.
+
+| 설정 | 기본값 | 설명 |
+| --- | --- | --- |
+| `mode` | `ask` | `ask`는 매번 묻고, `block`은 묻지 않고 세웁니다 |
+| `sound` | `true` | 찰칵 셔터 소리 |
+| `voice` | `true` | 단속 종류 음성 안내 |
+| `voice_name` | `Yuna` | macOS 음성 이름 |
+
+### taxi-blackbox
+
+```
+● REC 12:34 · 기록 128 사고 2 · /blackbox
+```
+
+- 모든 도구 호출의 시각, 도구, 대상(명령·파일·URL)과 결과(정상·오류·거부)를 이번 세션 동안 최대 500개 기억합니다.
+- `/blackbox`는 사고 직전 동작을 보여주는 창을 엽니다. `p`·`n`으로 이전·다음 사고를 넘겨보세요.
+- `token=`, `password=`, `Bearer`, `sk-`, `ghp_`, `xoxb-`, `AKIA` 형태의 값은 `•••`로 가려서 기록합니다. 기록은 메모리에만 두고 파일로 저장하지 않습니다.
+
+| 설정 | 기본값 | 설명 |
+| --- | --- | --- |
+| `before` | 5 | 사고 하나와 함께 보여줄 직전 동작 수 |
+
+## 알아두면 좋은 점
+
+- mods는 샌드박스 없이 Claude Code 안에서 실행됩니다. 어떤 mod든 설치 전에 코드를 읽어보세요. 이 팩은 `$.fs`, `$.process`, `$.http`를 쓰지 않습니다. `claude plugin validate plugins/<이름>`의 `calls:` 줄로 직접 확인할 수 있어요.
+- 소리와 음성은 macOS에서만 납니다. Linux와 Windows에서는 화면 표시만 동작해요.
+- 설정은 `/config`에서 바꿀 수 있습니다.
+
+## 개발
+
+```bash
+claude plugin validate plugins/taxi-meter
+claude plugin test plugins/taxi-meter
+python3 scripts/make-sounds.py
+```
+
+효과음은 `scripts/make-sounds.py`가 직접 합성한 파일이라 외부 음원 라이선스가 없습니다.

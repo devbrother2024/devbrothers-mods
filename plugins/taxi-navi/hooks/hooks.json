@@ -1,0 +1,4 @@
+{
+  "description": "taxi-navi hooks module",
+  "modules": ["./register.ts"]
+}

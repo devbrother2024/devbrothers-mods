@@ -1,0 +1,4 @@
+{
+  "description": "taxi-speedcam hooks module",
+  "modules": ["./register.ts"]
+}

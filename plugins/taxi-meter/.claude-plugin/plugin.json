@@ -1,0 +1,38 @@
+{
+  "name": "taxi-meter",
+  "version": "0.1.0",
+  "description": "프롬프트 위 택시 미터기: 세션 요금(API 정가 환산), 5시간·주간 한도와 리셋 시각, 모델 차종 표시등, /meter·/receipt",
+  "author": { "name": "개발동생 (devbrothers)" },
+  "keywords": ["mods", "usage", "rate-limits", "cost", "korean"],
+  "userConfig": {
+    "krw_per_usd": {
+      "type": "number",
+      "title": "환율 (원/달러)",
+      "description": "API 정가 환산 요금을 원화로 바꿀 때 쓰는 환율",
+      "default": 1400,
+      "min": 1,
+      "max": 100000
+    },
+    "style": {
+      "type": "string",
+      "title": "표시 방식",
+      "description": "led는 터미널에서 LED 숫자 3줄, compact는 한 줄",
+      "options": ["led", "compact"],
+      "default": "led"
+    },
+    "sound": {
+      "type": "boolean",
+      "title": "효과음",
+      "description": "요금이 오를 때 딸깍, 5시간 한도 90%·100%에서 알림음 (macOS)",
+      "default": true
+    },
+    "tick_won": {
+      "type": "number",
+      "title": "딸깍 단위 (원)",
+      "description": "이 금액만큼 오를 때마다 딸깍 소리를 냅니다",
+      "default": 1000,
+      "min": 10,
+      "max": 1000000
+    }
+  }
+}
