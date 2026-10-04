@@ -138,6 +138,13 @@ const dayKey = (ms: number) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
+const dateTimeOf = (iso?: string) => {
+  const ms = iso ? Date.parse(iso) : Number.NaN
+  if (Number.isNaN(ms)) return undefined
+  const d = new Date(ms)
+  return `${d.getMonth() + 1}/${d.getDate()} ${clockOfMs(ms)}`
+}
+
 const monthDay = (iso: string) => {
   const ms = Date.parse(iso)
   if (Number.isNaN(ms)) return '처음'
@@ -302,8 +309,8 @@ export const register: Register = (on, options) => {
   }
 
   const stateOf = (view: View): State => {
-    const five = view.limits.find((limit) => limit.kind === 'five_hour')
-    if (five && five.percentUsed >= 100) return '하차'
+    const isOut = view.limits.some((limit) => (limit.kind === 'five_hour' || limit.kind === 'seven_day') && limit.percentUsed >= 100)
+    if (isOut) return '하차'
     if (view.isWorking) return '주행'
     return view.usd === 0 ? '빈차' : '대기'
   }
@@ -329,6 +336,10 @@ export const register: Register = (on, options) => {
     if (five && five.percentUsed >= 100) {
       return { text: `하차하셔야 합니다${reset ? ` · ${reset} 재승차` : ''}`, color: RED, bold: true }
     }
+    if (week && week.percentUsed >= 100) {
+      const weekReset = dateTimeOf(week.resetsAt)
+      return { text: `하차하셔야 합니다 · 주간 한도${weekReset ? ` · ${weekReset} 재승차` : ''}`, color: RED, bold: true }
+    }
     const text = [
       five ? `5시간 ${bar(five.percentUsed)} ${five.percentUsed}%${reset ? ` · ${reset} 리셋` : ''}` : undefined,
       week ? `주간 ${week.percentUsed}%` : undefined,
@@ -336,7 +347,9 @@ export const register: Register = (on, options) => {
     ]
       .filter((part) => part !== undefined)
       .join(' │ ')
-    if (five && five.percentUsed >= 90) return { text: `곧 목적지입니다 · ${text}`, color: YELLOW, bold: true }
+    if ((five && five.percentUsed >= 90) || (week && week.percentUsed >= 90)) {
+      return { text: `곧 목적지입니다 · ${text}`, color: YELLOW, bold: true }
+    }
     return { text }
   }
 
@@ -503,7 +516,8 @@ export const register: Register = (on, options) => {
     const isTick = step > ticks
     if (isTick) ticks = step
 
-    const level = !five ? 0 : five.percentUsed >= 100 ? 100 : five.percentUsed >= 90 ? 90 : 0
+    const used = Math.max(five?.percentUsed ?? 0, limitOf('seven_day')?.percentUsed ?? 0)
+    const level = used >= 100 ? 100 : used >= 90 ? 90 : 0
     const isChime = level > warned
     warned = level
     return { delta, isTick, isChime }
@@ -575,7 +589,7 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: 'receipt' }, async ($) => {
-    await $.ui.open({ id: RECEIPT, title: '영수증', focus: true, closeOnEscape: true })
+    await $.ui.open({ id: RECEIPT, title: '영수증', focus: true, closeOnEscape: true, columns: 56 })
     return {}
   })
 
@@ -741,14 +755,16 @@ export const register: Register = (on, options) => {
         }),
         rule,
         row('승하차', plain(`${clockOfMs(startedAt)} → ${clockOfMs(now)} (${duration(now - startedAt)})`)),
-        row('주행', plain(`새로 처리 ${man(freshTokens)} · 캐시 재사용 ${man(cachedTokens)} 토큰 · ${shares()}`)),
+        row('주행', plain(`새로 처리 ${man(freshTokens)} 토큰`)),
+        row('', plain(`캐시 재사용 ${man(cachedTokens)} 토큰`)),
+        row('차종', plain(shares())),
         row(
           '요금',
           Text({ bold: true, color: RED, children: [won(sessionUsd)] }),
           Text({ dimColor: true, children: [`API 정가 $${sessionUsd.toFixed(2)} · 환율 ${comma(rate)}원`] }),
         ),
         row('요청', plain(requestsLine())),
-        Text({ dimColor: true, children: ['요금은 제목 생성·프롬프트 추천 같은 보이지 않는 호출까지 포함해요'] }),
+        row('', Text({ dimColor: true, children: ['제목 생성 같은 숨은 호출 포함'] })),
         row('표시등', plain(`장거리 ${longHaulCount}회 · 5시간 최고 ${peakFiveHour}%`)),
         row('누적', plain(`오늘 ${won(recentUsd(now, 1))} · ${monthDay(ledger.since)}부터 ${won(ledger.totalUsd)}`)),
         rule,

@@ -6,7 +6,7 @@
     {
       "name": "taxi-meter",
       "source": "./plugins/taxi-meter",
-      "description": "프롬프트 위 택시 미터기: 세션 요금(API 정가 환산), 5시간·주간 한도와 리셋 시각, /meter·/receipt"
+      "description": "프롬프트 위 택시 미터기: 세션 요금(API 정가 환산)과 방금 요청 요금, 모델 이름, 5시간·주간 한도와 리셋 시각, /meter·/receipt"
     },
     {
       "name": "taxi-navi",

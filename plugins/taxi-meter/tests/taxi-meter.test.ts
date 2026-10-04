@@ -304,8 +304,10 @@ test('/receipt는 영수증 창을 열고 승차 정보와 요청별 요금을 �
   const pane = await $.ui.mount(receiptPane)
   expect(await pane.find({ type: 'Text', text: '영  수  증' })).toBeDefined()
   expect(await pane.find({ type: 'Text', text: '14:00 → 14:25 (25분)' })).toBeDefined()
-  expect(await pane.find({ type: 'Text', text: '새로 처리 1,500 · 캐시 재사용 0 토큰 · 일반 100%' })).toBeDefined()
-  expect(await pane.find({ type: 'Text', text: '요금은 제목 생성·프롬프트 추천 같은 보이지 않는 호출까지 포함해요' })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: '새로 처리 1,500 토큰' })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: '캐시 재사용 0 토큰' })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: '일반 100%' })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: '제목 생성 같은 숨은 호출 포함' })).toBeDefined()
   expect(await pane.find({ type: 'Text', text: '₩2,100' })).toBeDefined()
   expect(await pane.find({ type: 'Text', text: '2건 · ₩700 · ₩1,400' })).toBeDefined()
   expect(await pane.find({ type: 'Text', text: 'API 정가 $1.50 · 환율 1,400원' })).toBeDefined()
@@ -403,7 +405,8 @@ test('영수증은 새로 처리한 토큰과 캐시 재사용 토큰을 나눠 
   await step('claude-sonnet-5-5')
   await $.command.run({ command: 'receipt', args: '' })
   const pane = await $.ui.mount(receiptPane)
-  expect(await pane.find({ type: 'Text', text: '새로 처리 3,000 · 캐시 재사용 40만 토큰 · 일반 100%' })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: '새로 처리 3,000 토큰' })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: '캐시 재사용 40만 토큰' })).toBeDefined()
 })
 
 test('모델을 바꾸면 재캐시 예상 요금을 토스트로 알리고 작으면 조용하다', COMPACT, async ($, on) => {
@@ -450,4 +453,19 @@ test('미터기는 차종과 함께 실제 모델 이름을 보인다', LED, asy
   })
   ui = await $.ui.mount({ ...band('terminal'), props: { ...band('terminal').props, bodyColumns: 60 } })
   expect(await ui.find({ type: 'Text', text: 'Haiku 4.5' })).toBeDefined()
+})
+
+test('주간 한도를 다 쓰면 하차로 바꾸고 90%부터 곧 목적지 경고와 알림음을 낸다', COMPACT, async ($, on) => {
+  const { measure, sounds } = await ride($, on)
+  const weekReset = new Date(2026, 9, 7, 14, 0).toISOString()
+  await measure(0.1, [{ kind: 'five_hour', percentUsed: 10, resetsAt: RESET }, { kind: 'seven_day', percentUsed: 92, resetsAt: weekReset }])
+  let ui = await $.ui.mount(band())
+  expect(await ui.find({ type: 'Text', text: '곧 목적지입니다 · 5시간 █░░░░░░░░░ 10% · 19:00 리셋 │ 주간 92%' })).toBeDefined()
+  await ui.unmount()
+
+  await measure(0.2, [{ kind: 'five_hour', percentUsed: 0, resetsAt: RESET }, { kind: 'seven_day', percentUsed: 100, resetsAt: weekReset }])
+  ui = await $.ui.mount(band())
+  expect(await ui.find({ type: 'Text', text: '하차하셔야 합니다 · 주간 한도 · 10/7 14:00 재승차' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '[하차]' })).toBeDefined()
+  expect(sounds.filter((s) => s === 'sounds/chime.wav').length).toBe(2)
 })
