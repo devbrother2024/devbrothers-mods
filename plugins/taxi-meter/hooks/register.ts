@@ -462,6 +462,7 @@ export const register: Register = (on, options) => {
       rideUsd = 0
       sessionUsd = 0
       ticks = 0
+      endDemo()
       $.ui.invalidate('ui.render')
       return { text: '미터기와 누적 요금을 0원으로 초기화했어요.' }
     }

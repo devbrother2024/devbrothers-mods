@@ -200,6 +200,17 @@ test('/meter reset은 화면 요금과 누적을 모두 0원으로 만든다', C
   expect(await ui.find({ type: 'Text', text: '₩1,400' })).toBeDefined()
 })
 
+test('/meter reset은 데모 주행 화면도 끝내고 실제 미터기로 돌아온다', COMPACT, async ($, on) => {
+  const { clock } = await ride($, on)
+  await $.command.run({ command: 'meter', args: 'demo' })
+  await clock.advance(12_000)
+  await $.command.run({ command: 'meter', args: 'reset' })
+  const ui = await $.ui.mount(band())
+  expect(await ui.find({ type: 'Text', text: '₩0' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '데모 주행' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: '[빈차]' })).toBeDefined()
+})
+
 test('/meter는 이번 승차·세션·오늘·누적을 보고하고 /meter reset은 누적도 비운다', COMPACT, async ($, on) => {
   const since = new Date(2026, 8, 20).toISOString()
   const today = '2026-10-04'
