@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "위험한 Bash 명령 앞의 과속 단속 카메라: force push·rm -rf·DB 삭제·변경 폐기·운영 배포를 찰칵 잡아 [가주세요]/[세워주세요]로 묻습니다",
   "author": { "name": "개발동생 (devbrothers)" },
+  "homepage": "https://github.com/devbrother2024/devbrothers-mods",
+  "repository": "https://github.com/devbrother2024/devbrothers-mods",
+  "license": "MIT",
   "keywords": ["mods", "safety", "bash", "guard", "korean"],
   "userConfig": {
     "mode": {

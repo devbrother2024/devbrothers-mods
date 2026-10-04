@@ -4,7 +4,7 @@
 
 | mod | 하는 일 | 명령 |
 | --- | --- | --- |
-| `taxi-meter` | 프롬프트 위에 택시 미터기를 띄웁니다. 이번 세션 요금(API 정가 환산 원화), 5시간·주간 한도와 리셋 시각, 모델 차종 표시등을 보여줍니다. | `/meter`, `/meter reset`, `/receipt` |
+| `taxi-meter` | 프롬프트 위에 택시 미터기를 띄웁니다. 이번 세션 요금(API 정가 환산 원화), 5시간·주간 한도와 리셋 시각, 모델 차종 표시등을 보여줍니다. | `/meter`, `/meter reset`, `/meter demo`, `/receipt` |
 | `taxi-navi` | Claude의 할 일 목록을 내비 경로로 그립니다. 계획이 바뀌면 "경로를 재탐색합니다", 다 끝나면 도착 안내를 합니다. | `/navi` |
 | `taxi-speedcam` | 위험한 Bash 명령 앞에서 찰칵 잡고 [가주세요]/[세워주세요]로 묻습니다. | `/speedcam` |
 | `taxi-blackbox` | 도구 호출을 녹화합니다. 오류·거부(사고)가 나면 직전 동작을 돌려볼 수 있어요. | `/blackbox` |
@@ -15,10 +15,13 @@ Claude Code 2.1.289에서 만들고 테스트했습니다.
 
 ```bash
 claude plugin marketplace add devbrother2024/devbrothers-mods
+claude plugin install taxi-blackbox@devbrothers-mods
+claude plugin install taxi-speedcam@devbrothers-mods
 claude plugin install taxi-meter@devbrothers-mods
+claude plugin install taxi-navi@devbrothers-mods
 ```
 
-나머지도 같은 방식으로 `taxi-navi`, `taxi-speedcam`, `taxi-blackbox`을 설치하면 됩니다.
+하나만 골라 설치해도 됩니다. 넷 다 쓴다면 블랙박스를 먼저 설치하세요. Claude Code는 설치한 순서대로 mod를 불러오는데, 블랙박스가 단속 카메라보다 앞에 있어야 단속 카메라가 세운 명령까지 기록돼요. 설정은 따로 하지 않아도 기본값으로 동작합니다.
 
 설치 전에 한 세션만 써보고 싶다면 저장소를 받아서 `--plugin-dir`로 띄워보세요.
 
@@ -37,13 +40,14 @@ claude --plugin-dir plugins/taxi-blackbox --plugin-dir plugins/taxi-speedcam --p
 ```
  █▀█   원 · API 정가 환산 [주행] [모범] [장거리]
  █ █   ·····🐎····
- ▀▀▀   5시간 72% · 19:00 리셋 │ 주간 31%
+ ▀▀▀   5시간 ███████░░░ 72% · 19:00 리셋 │ 주간 31%
 ```
 
 - 요금은 이번 세션에서 쓴 토큰을 **API 정가로 환산한 금액**입니다. 구독(Pro·Max) 요금제에서 실제로 청구되는 돈이 아니에요.
 - 표시등: `[빈차]` 시작 전, `[주행]` 응답 중, `[대기]` 응답 끝, `[하차]` 5시간 한도 소진. 차종은 Sonnet·Haiku `[일반]`, Opus `[모범]`, Fable `[블랙]`입니다. 컨텍스트가 50%를 넘으면 `[장거리]`가 켜져요.
 - 5시간 한도가 90%를 넘으면 "곧 목적지입니다", 100%면 "하차하셔야 합니다 · 리셋 시각 재승차"로 바뀌고 알림음이 한 번 울립니다.
 - `/meter`는 이번 승차·오늘·최근 7일·누적 요금을 보여주고, `/receipt`는 영수증 창을 엽니다. 누적 장부는 세션을 넘어 90일치를 보관합니다.
+- `/meter demo`는 촬영·시연용 데모 주행입니다. 실제 사용량과 상관없는 연출 숫자로 약 10초 동안 승차부터 하차까지 보여주고, 미터기에 "데모 주행"이라고 표시돼요. 한 번 더 입력하거나 다음 프롬프트를 보내면 실제 미터기로 돌아옵니다.
 
 | 설정 | 기본값 | 설명 |
 | --- | --- | --- |
@@ -120,3 +124,7 @@ python3 scripts/make-sounds.py
 ```
 
 효과음은 `scripts/make-sounds.py`가 직접 합성한 파일이라 외부 음원 라이선스가 없습니다.
+
+## 라이선스
+
+MIT. 자세한 내용은 [LICENSE](LICENSE)를 보세요.

@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "프롬프트 위 택시 미터기: 세션 요금(API 정가 환산), 5시간·주간 한도와 리셋 시각, 모델 차종 표시등, /meter·/receipt",
   "author": { "name": "개발동생 (devbrothers)" },
+  "homepage": "https://github.com/devbrother2024/devbrothers-mods",
+  "repository": "https://github.com/devbrother2024/devbrothers-mods",
+  "license": "MIT",
   "keywords": ["mods", "usage", "rate-limits", "cost", "korean"],
   "userConfig": {
     "krw_per_usd": {
